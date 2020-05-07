@@ -113,6 +113,21 @@ options:
         - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
       type: str
       version_added: "3.7"
+    notification_templates_started:
+      description:
+        - list of notifications to send on start
+      type: list
+      elements: str
+    notification_templates_success:
+      description:
+        - list of notifications to send on success
+      type: list
+      elements: str
+    notification_templates_error:
+      description:
+        - list of notifications to send on error
+      type: list
+      elements: str
 extends_documentation_fragment: awx.awx.auth
 '''
 
@@ -155,6 +170,9 @@ def main():
         ask_limit_on_launch=dict(type='bool'),
         webhook_service=dict(choices=['github', 'gitlab']),
         webhook_credential=dict(),
+        notification_templates_started=dict(type="list", elements='str'),
+        notification_templates_success=dict(type="list", elements='str'),
+        notification_templates_error=dict(type="list", elements='str'),
         state=dict(choices=['present', 'absent'], default='present'),
     )
 
@@ -175,6 +193,13 @@ def main():
         organization_id = module.resolve_name_to_id('organizations', organization)
         search_fields['organization'] = new_fields['organization'] = organization_id
 
+    # Attempt to look up an existing item based on the provided data
+    existing_item = module.get_one('workflow_job_templates', **{'data': search_fields})
+
+    if state == 'absent':
+        # If the state was absent we can let the module delete it if needed, the module will handle exiting from this
+        module.delete_if_needed(existing_item)
+
     inventory = module.params.get('inventory')
     if inventory:
         new_fields['inventory'] = module.resolve_name_to_id('inventories', inventory)
@@ -182,9 +207,6 @@ def main():
     webhook_credential = module.params.get('webhook_credential')
     if webhook_credential:
         new_fields['webhook_credential'] = module.resolve_name_to_id('webhook_credential', webhook_credential)
-
-    # Attempt to look up an existing item based on the provided data
-    existing_item = module.get_one('workflow_job_templates', **{'data': search_fields})
 
     # Create the data that gets sent for create and update
     new_fields['name'] = new_name if new_name else name
@@ -200,6 +222,26 @@ def main():
     if 'extra_vars' in new_fields:
         new_fields['extra_vars'] = json.dumps(new_fields['extra_vars'])
 
+    association_fields = {}
+
+    notifications_start = module.params.get('notification_templates_started')
+    if notifications_start is not None:
+        association_fields['notification_templates_started'] = []
+        for item in notifications_start:
+            association_fields['notification_templates_started'].append(module.resolve_name_to_id('notification_templates', item))
+
+    notifications_success = module.params.get('notification_templates_success')
+    if notifications_success is not None:
+        association_fields['notification_templates_success'] = []
+        for item in notifications_success:
+            association_fields['notification_templates_success'].append(module.resolve_name_to_id('notification_templates', item))
+
+    notifications_error = module.params.get('notification_templates_error')
+    if notifications_error is not None:
+        association_fields['notification_templates_error'] = []
+        for item in notifications_error:
+            association_fields['notification_templates_error'].append(module.resolve_name_to_id('notification_templates', item))
+
     on_change = None
     new_spec = module.params.get('survey')
     if new_spec:
@@ -213,16 +255,13 @@ def main():
                 module._encrypted_changed_warning('survey_spec', existing_item, warning=True)
             on_change = update_survey
 
-    if state == 'absent':
-        # If the state was absent we can let the module delete it if needed, the module will handle exiting from this
-        module.delete_if_needed(existing_item)
-    elif state == 'present':
-        # If the state was present and we can let the module build or update the existing item, this will return on its own
-        module.create_or_update_if_needed(
-            existing_item, new_fields,
-            endpoint='workflow_job_templates', item_type='workflow_job_template',
-            on_create=on_change, on_update=on_change
-        )
+    # If the state was present and we can let the module build or update the existing item, this will return on its own
+    module.create_or_update_if_needed(
+        existing_item, new_fields,
+        endpoint='workflow_job_templates', item_type='workflow_job_template',
+        associations=association_fields,
+        on_create=on_change, on_update=on_change
+    )
 
 
 if __name__ == '__main__':

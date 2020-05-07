@@ -2491,8 +2491,9 @@ class rhv(PluginFileInjector):
     """
     plugin_name = 'ovirt'
     base_injector = 'template'
+    initial_version = '2.9'
     namespace = 'ovirt'
-    collection = 'ovirt_collection'
+    collection = 'ovirt'
 
     @property
     def script_name(self):
@@ -2577,6 +2578,12 @@ class satellite6(PluginFileInjector):
     def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = super(satellite6, self).inventory_as_dict(inventory_update, private_data_dir)
 
+        want_ansible_ssh_host = False
+        foreman_opts = inventory_update.source_vars_dict.copy()
+        for k, v in foreman_opts.items():
+            if k == 'satellite6_want_ansible_ssh_host' and isinstance(v, bool):
+                want_ansible_ssh_host = v
+
         # Compatibility content
         group_by_hostvar = {
             "environment":           {"prefix": "foreman_environment_",
@@ -2602,6 +2609,9 @@ class satellite6(PluginFileInjector):
         ret['legacy_hostvars'] = True
         ret['want_facts'] = True
         ret['want_params'] = True
+
+        if want_ansible_ssh_host:
+            ret['compose'] = {'ansible_ssh_host': "foreman['ip6'] | default(foreman['ip'], true)"}
 
         return ret
 

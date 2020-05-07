@@ -2756,16 +2756,11 @@ class JobOptionsSerializer(LabelsListMixin, BaseSerializer):
         if obj.organization_id:
             res['organization'] = self.reverse('api:organization_detail', kwargs={'pk': obj.organization_id})
         if isinstance(obj, UnifiedJobTemplate):
-            res['extra_credentials'] = self.reverse(
-                'api:job_template_extra_credentials_list',
-                kwargs={'pk': obj.pk}
-            )
             res['credentials'] = self.reverse(
                 'api:job_template_credentials_list',
                 kwargs={'pk': obj.pk}
             )
         elif isinstance(obj, UnifiedJob):
-            res['extra_credentials'] = self.reverse('api:job_extra_credentials_list', kwargs={'pk': obj.pk})
             res['credentials'] = self.reverse('api:job_credentials_list', kwargs={'pk': obj.pk})
 
         return res
@@ -2934,7 +2929,6 @@ class JobTemplateSerializer(JobTemplateMixin, UnifiedJobTemplateSerializer, JobO
         summary_fields = super(JobTemplateSerializer, self).get_summary_fields(obj)
         all_creds = []
         # Organize credential data into multitude of deprecated fields
-        extra_creds = []
         if obj.pk:
             for cred in obj.credentials.all():
                 summarized_cred = {
@@ -2945,10 +2939,6 @@ class JobTemplateSerializer(JobTemplateMixin, UnifiedJobTemplateSerializer, JobO
                     'cloud': cred.credential_type.kind == 'cloud'
                 }
                 all_creds.append(summarized_cred)
-                if cred.credential_type.kind in ('cloud', 'net'):
-                    extra_creds.append(summarized_cred)
-        if self.is_detail_view:
-            summary_fields['extra_credentials'] = extra_creds
         summary_fields['credentials'] = all_creds
         return summary_fields
 
@@ -3023,7 +3013,6 @@ class JobSerializer(UnifiedJobSerializer, JobOptionsSerializer):
         summary_fields = super(JobSerializer, self).get_summary_fields(obj)
         all_creds = []
         # Organize credential data into multitude of deprecated fields
-        extra_creds = []
         if obj.pk:
             for cred in obj.credentials.all():
                 summarized_cred = {
@@ -3034,10 +3023,6 @@ class JobSerializer(UnifiedJobSerializer, JobOptionsSerializer):
                     'cloud': cred.credential_type.kind == 'cloud'
                 }
                 all_creds.append(summarized_cred)
-                if cred.credential_type.kind in ('cloud', 'net'):
-                    extra_creds.append(summarized_cred)
-        if self.is_detail_view:
-            summary_fields['extra_credentials'] = extra_creds
         summary_fields['credentials'] = all_creds
         return summary_fields
 
@@ -3899,15 +3884,23 @@ class ProjectUpdateEventSerializer(JobEventSerializer):
         return UriCleaner.remove_sensitive(obj.stdout)
 
     def get_event_data(self, obj):
-        try:
-            return json.loads(
-                UriCleaner.remove_sensitive(
-                    json.dumps(obj.event_data)
+        # the project update playbook uses the git, hg, or svn modules
+        # to clone repositories, and those modules are prone to printing
+        # raw SCM URLs in their stdout (which *could* contain passwords)
+        # attempt to detect and filter HTTP basic auth passwords in the stdout
+        # of these types of events
+        if obj.event_data.get('task_action') in ('git', 'hg', 'svn'):
+            try:
+                return json.loads(
+                    UriCleaner.remove_sensitive(
+                        json.dumps(obj.event_data)
+                    )
                 )
-            )
-        except Exception:
-            logger.exception("Failed to sanitize event_data")
-            return {}
+            except Exception:
+                logger.exception("Failed to sanitize event_data")
+                return {}
+        else:
+            return obj.event_data
 
 
 class AdHocCommandEventSerializer(BaseSerializer):
