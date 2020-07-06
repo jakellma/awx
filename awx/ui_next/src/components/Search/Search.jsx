@@ -1,3 +1,4 @@
+import 'styled-components/macro';
 import React, { Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { withI18n } from '@lingui/react';
@@ -15,16 +16,14 @@ import {
   SelectOption,
   SelectVariant,
   TextInput,
+  ToolbarGroup,
+  ToolbarItem,
+  ToolbarFilter,
 } from '@patternfly/react-core';
-import {
-  DataToolbarGroup,
-  DataToolbarItem,
-  DataToolbarFilter,
-} from '@patternfly/react-core/dist/umd/experimental';
 import { SearchIcon } from '@patternfly/react-icons';
-import { parseQueryString } from '@util/qs';
-import { QSConfig, SearchColumns } from '@types';
 import styled from 'styled-components';
+import { parseQueryString } from '../../util/qs';
+import { QSConfig, SearchColumns } from '../../types';
 
 const NoOptionDropdown = styled.div`
   align-self: stretch;
@@ -204,8 +203,8 @@ class Search extends React.Component {
     const chipsByKey = getChipsByKey();
 
     return (
-      <DataToolbarGroup variant="filter-group">
-        <DataToolbarItem>
+      <ToolbarGroup variant="filter-group">
+        <ToolbarItem>
           {searchDropdownItems.length > 0 ? (
             <Dropdown
               onToggle={this.handleDropdownToggle}
@@ -226,10 +225,10 @@ class Search extends React.Component {
           ) : (
             <NoOptionDropdown>{searchColumnName}</NoOptionDropdown>
           )}
-        </DataToolbarItem>
+        </ToolbarItem>
         {columns.map(
           ({ key, name, options, isBoolean, booleanLabels = {} }) => (
-            <DataToolbarFilter
+            <ToolbarFilter
               chips={chipsByKey[key] ? chipsByKey[key].chips : []}
               deleteChip={(unusedKey, chip) => {
                 const [columnKey, ...value] = chip.key.split(':');
@@ -252,7 +251,7 @@ class Search extends React.Component {
                       const [, ...value] = chip.key.split(':');
                       return value.join(':');
                     })}
-                    isExpanded={isFilterDropdownOpen}
+                    isOpen={isFilterDropdownOpen}
                     placeholderText={`Filter By ${name}`}
                   >
                     {options.map(([optionKey, optionLabel]) => (
@@ -271,7 +270,7 @@ class Search extends React.Component {
                       this.handleFilterBooleanSelect(key, selection)
                     }
                     selections={chipsByKey[key].chips[0]}
-                    isExpanded={isFilterDropdownOpen}
+                    isOpen={isFilterDropdownOpen}
                     placeholderText={`Filter By ${name}`}
                   >
                     <SelectOption key="true" value="true">
@@ -310,10 +309,10 @@ class Search extends React.Component {
                     </div>
                   </InputGroup>
                 )}
-            </DataToolbarFilter>
+            </ToolbarFilter>
           )
         )}
-      </DataToolbarGroup>
+      </ToolbarGroup>
     );
   }
 }

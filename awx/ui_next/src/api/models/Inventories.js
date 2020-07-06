@@ -72,6 +72,28 @@ class Inventories extends InstanceGroupsMixin(Base) {
       params,
     });
   }
+
+  async readSourceDetail(inventoryId, sourceId) {
+    const {
+      data: { results },
+    } = await this.http.get(
+      `${this.baseUrl}${inventoryId}/inventory_sources/?id=${sourceId}`
+    );
+
+    if (Array.isArray(results) && results.length) {
+      return results[0];
+    }
+
+    throw new Error(
+      `How did you get here? Source not found for Inventory ID: ${inventoryId}`
+    );
+  }
+
+  syncAllSources(inventoryId) {
+    return this.http.post(
+      `${this.baseUrl}${inventoryId}/update_inventory_sources/`
+    );
+  }
 }
 
 export default Inventories;

@@ -1,13 +1,13 @@
 import React from 'react';
 
-import { mountWithContexts } from '@testUtils/enzymeHelpers';
-import { sleep } from '@testUtils/testUtils';
+import { mountWithContexts } from '../../../testUtils/enzymeHelpers';
+import { sleep } from '../../../testUtils/testUtils';
 
-import { NotificationTemplatesAPI } from '@api';
+import { NotificationTemplatesAPI } from '../../api';
 
 import NotificationList from './NotificationList';
 
-jest.mock('@api');
+jest.mock('../../api');
 
 describe('<NotificationList />', () => {
   const data = {
@@ -271,5 +271,40 @@ describe('<NotificationList />', () => {
     expect(
       wrapper.find('NotificationList').state('startedTemplateIds')
     ).toEqual([]);
+  });
+  test('should throw toggle error', async () => {
+    MockModelAPI.associateNotificationTemplate.mockRejectedValue(
+      new Error({
+        response: {
+          config: {
+            method: 'post',
+          },
+          data: 'An error occurred',
+          status: 403,
+        },
+      })
+    );
+    const wrapper = mountWithContexts(
+      <NotificationList id={1} canToggleNotifications apiModel={MockModelAPI} />
+    );
+    await sleep(0);
+    wrapper.update();
+
+    expect(
+      wrapper.find('NotificationList').state('startedTemplateIds')
+    ).toEqual([3]);
+    const items = wrapper.find('NotificationListItem');
+    items
+      .at(0)
+      .find('Switch[aria-label="Toggle notification start"]')
+      .prop('onChange')();
+    expect(MockModelAPI.associateNotificationTemplate).toHaveBeenCalledWith(
+      1,
+      1,
+      'started'
+    );
+    await sleep(0);
+    wrapper.update();
+    expect(wrapper.find('ErrorDetail').length).toBe(1);
   });
 });

@@ -50,7 +50,7 @@ from awx.main.models.rbac import (
     batch_role_ancestor_rebuilding, Role,
     ROLE_SINGLETON_SYSTEM_ADMINISTRATOR, ROLE_SINGLETON_SYSTEM_AUDITOR
 )
-from awx.main.constants import ENV_BLACKLIST
+from awx.main.constants import ENV_BLOCKLIST
 from awx.main import utils
 
 
@@ -637,6 +637,14 @@ class CredentialInputField(JSONSchemaField):
             else:
                 decrypted_values[k] = v
 
+        # don't allow secrets with $encrypted$ on new object creation
+        if not model_instance.pk:
+            for field in model_instance.credential_type.secret_fields:
+                if value.get(field) == '$encrypted$':
+                    raise serializers.ValidationError({
+                        self.name: [f'$encrypted$ is a reserved keyword, and cannot be used for {field}.']
+                    })
+
         super(JSONSchemaField, self).validate(decrypted_values, model_instance)
         errors = {}
         for error in Draft4Validator(
@@ -870,9 +878,9 @@ class CredentialTypeInjectorField(JSONSchemaField):
                   'use is not allowed in credentials.').format(env_var),
                 code='invalid', params={'value': env_var},
             )
-        if env_var in ENV_BLACKLIST:
+        if env_var in ENV_BLOCKLIST:
             raise django_exceptions.ValidationError(
-                _('Environment variable {} is blacklisted from use in credentials.').format(env_var),
+                _('Environment variable {} is not allowed to be used in credentials.').format(env_var),
                 code='invalid', params={'value': env_var},
             )
 

@@ -3,9 +3,9 @@ import PropTypes from 'prop-types';
 import { useLocation } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { OrganizationsAPI } from '@api';
-import PaginatedDataList from '@components/PaginatedDataList';
-import { getQSConfig, parseQueryString } from '@util/qs';
+import { OrganizationsAPI } from '../../../api';
+import PaginatedDataList from '../../../components/PaginatedDataList';
+import { getQSConfig, parseQueryString } from '../../../util/qs';
 
 const QS_CONFIG = getQSConfig('team', {
   page: 1,
@@ -47,7 +47,7 @@ function OrganizationTeams({ id, i18n }) {
       hasContentLoading={hasContentLoading}
       items={teams}
       itemCount={itemCount}
-      pluralizedItemName="Teams"
+      pluralizedItemName={i18n._(t`Teams`)}
       qsConfig={QS_CONFIG}
       toolbarSearchColumns={[
         {

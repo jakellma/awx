@@ -1,13 +1,16 @@
 import React from 'react';
 
-import { sleep } from '@testUtils/testUtils';
-import { mountWithContexts, waitForElement } from '@testUtils/enzymeHelpers';
+import { sleep } from '../../../testUtils/testUtils';
+import {
+  mountWithContexts,
+  waitForElement,
+} from '../../../testUtils/enzymeHelpers';
 
-import { OrganizationsAPI, TeamsAPI, UsersAPI } from '@api';
+import { OrganizationsAPI, TeamsAPI, UsersAPI } from '../../api';
 
 import ResourceAccessList from './ResourceAccessList';
 
-jest.mock('@api');
+jest.mock('../../api');
 
 describe('<ResourceAccessList />', () => {
   const organization = {
@@ -114,7 +117,7 @@ describe('<ResourceAccessList />', () => {
     await sleep(0);
     wrapper.update();
 
-    const button = wrapper.find('ChipButton').at(0);
+    const button = wrapper.find('Chip Button').at(0);
     button.prop('onClick')();
     wrapper.update();
 
@@ -133,7 +136,7 @@ describe('<ResourceAccessList />', () => {
     );
     await sleep(0);
     wrapper.update();
-    const button = wrapper.find('ChipButton').at(0);
+    const button = wrapper.find('Chip Button').at(0);
     button.prop('onClick')();
     wrapper.update();
 
@@ -152,7 +155,7 @@ describe('<ResourceAccessList />', () => {
     );
     const button = await waitForElement(
       wrapper,
-      'ChipButton',
+      'Chip Button',
       el => el.length === 2
     );
     button.at(0).prop('onClick')();
@@ -185,7 +188,7 @@ describe('<ResourceAccessList />', () => {
     );
     const button = await waitForElement(
       wrapper,
-      'ChipButton',
+      'Chip Button',
       el => el.length === 2
     );
     button.at(1).prop('onClick')();

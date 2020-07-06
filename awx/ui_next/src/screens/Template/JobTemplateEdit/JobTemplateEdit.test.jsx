@@ -1,12 +1,21 @@
 import React from 'react';
 import { act } from 'react-dom/test-utils';
 import { createMemoryHistory } from 'history';
-import { sleep } from '@testUtils/testUtils';
-import { mountWithContexts, waitForElement } from '@testUtils/enzymeHelpers';
-import { JobTemplatesAPI, LabelsAPI, ProjectsAPI } from '@api';
+import { sleep } from '../../../../testUtils/testUtils';
+import {
+  mountWithContexts,
+  waitForElement,
+} from '../../../../testUtils/enzymeHelpers';
+import {
+  CredentialsAPI,
+  CredentialTypesAPI,
+  JobTemplatesAPI,
+  LabelsAPI,
+  ProjectsAPI,
+} from '../../../api';
 import JobTemplateEdit from './JobTemplateEdit';
 
-jest.mock('@api');
+jest.mock('../../../api');
 
 const mockJobTemplate = {
   allow_callbacks: false,
@@ -43,7 +52,10 @@ const mockJobTemplate = {
       edit: true,
     },
     labels: {
-      results: [{ name: 'Sushi', id: 1 }, { name: 'Major', id: 2 }],
+      results: [
+        { name: 'Sushi', id: 1 },
+        { name: 'Major', id: 2 },
+      ],
     },
     inventory: {
       id: 2,
@@ -54,7 +66,7 @@ const mockJobTemplate = {
       { id: 2, kind: 'ssh', name: 'Bar' },
     ],
     project: {
-      id: 15,
+      id: 3,
       name: 'Boo',
     },
   },
@@ -170,6 +182,13 @@ ProjectsAPI.readPlaybooks.mockResolvedValue({
   data: mockRelatedProjectPlaybooks,
 });
 LabelsAPI.read.mockResolvedValue({ data: { results: [] } });
+CredentialsAPI.read.mockResolvedValue({
+  data: {
+    results: [],
+    count: 0,
+  },
+});
+CredentialTypesAPI.loadAllTypes.mockResolvedValue([]);
 
 describe('<JobTemplateEdit />', () => {
   beforeEach(() => {
@@ -245,14 +264,15 @@ describe('<JobTemplateEdit />', () => {
 
     const expected = {
       ...mockJobTemplate,
-      project: mockJobTemplate.project.id,
+      project: mockJobTemplate.project,
       ...updatedTemplateData,
     };
     delete expected.summary_fields;
     delete expected.id;
     delete expected.type;
     delete expected.related;
-    expected.webhook_url = `${window.location.origin}${mockJobTemplate.related.webhook_receiver}`;
+    delete expected.webhook_key;
+    delete expected.webhook_url;
     expect(JobTemplatesAPI.update).toHaveBeenCalledWith(1, expected);
     expect(JobTemplatesAPI.disassociateLabel).toHaveBeenCalledTimes(2);
     expect(JobTemplatesAPI.associateLabel).toHaveBeenCalledTimes(4);
@@ -306,7 +326,10 @@ describe('<JobTemplateEdit />', () => {
           edit: true,
         },
         labels: {
-          results: [{ name: 'Sushi', id: 1 }, { name: 'Major', id: 2 }],
+          results: [
+            { name: 'Sushi', id: 1 },
+            { name: 'Major', id: 2 },
+          ],
         },
         inventory: {
           id: 2,

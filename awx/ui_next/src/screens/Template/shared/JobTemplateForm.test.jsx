@@ -1,13 +1,22 @@
 import React from 'react';
 import { act } from 'react-dom/test-utils';
-import { mountWithContexts, waitForElement } from '@testUtils/enzymeHelpers';
-import { sleep } from '@testUtils/testUtils';
 import { Route } from 'react-router-dom';
 import { createMemoryHistory } from 'history';
+import {
+  mountWithContexts,
+  waitForElement,
+} from '../../../../testUtils/enzymeHelpers';
+import { sleep } from '../../../../testUtils/testUtils';
 import JobTemplateForm from './JobTemplateForm';
-import { LabelsAPI, JobTemplatesAPI, ProjectsAPI, CredentialsAPI } from '@api';
+import {
+  LabelsAPI,
+  JobTemplatesAPI,
+  ProjectsAPI,
+  CredentialsAPI,
+  CredentialTypesAPI,
+} from '../../../api';
 
-jest.mock('@api');
+jest.mock('../../../api');
 
 describe('<JobTemplateForm />', () => {
   const mockData = {
@@ -20,6 +29,7 @@ describe('<JobTemplateForm />', () => {
     playbook: 'Baz',
     type: 'job_template',
     scm_branch: 'Foo',
+    limit: '5000',
     summary_fields: {
       inventory: {
         id: 2,
@@ -30,13 +40,18 @@ describe('<JobTemplateForm />', () => {
         id: 3,
         name: 'qux',
       },
-      labels: { results: [{ name: 'Sushi', id: 1 }, { name: 'Major', id: 2 }] },
+      labels: {
+        results: [
+          { name: 'Sushi', id: 1 },
+          { name: 'Major', id: 2 },
+        ],
+      },
       credentials: [
         { id: 1, kind: 'cloud', name: 'Foo' },
         { id: 2, kind: 'ssh', name: 'Bar' },
       ],
     },
-    related: { webhook_receiver: '/api/v2/workflow_job_templates/57/gitlab/' },
+    related: { webhook_receiver: '/api/v2/job_templates/57/gitlab/' },
     webhook_key: 'webhook key',
     webhook_service: 'github',
     webhook_credential: 7,
@@ -86,6 +101,7 @@ describe('<JobTemplateForm />', () => {
     LabelsAPI.read.mockReturnValue({
       data: mockData.summary_fields.labels,
     });
+    CredentialTypesAPI.loadAllTypes.mockResolvedValue([]);
     CredentialsAPI.read.mockReturnValue({
       data: { results: mockCredentials },
     });
@@ -169,9 +185,10 @@ describe('<JobTemplateForm />', () => {
 
     wrapper.update();
     await act(async () => {
-      wrapper.find('input#template-scm-branch').simulate('change', {
-        target: { value: 'devel', name: 'scm_branch' },
-      });
+      wrapper.find('TextInputBase#template-scm-branch').prop('onChange')(
+        'devel'
+      );
+      wrapper.find('TextInputBase#template-limit').prop('onChange')(1234567890);
       wrapper.find('AnsibleSelect[name="playbook"]').simulate('change', {
         target: { value: 'new baz type', name: 'playbook' },
       });
@@ -205,6 +222,9 @@ describe('<JobTemplateForm />', () => {
     });
     expect(wrapper.find('input#template-scm-branch').prop('value')).toEqual(
       'devel'
+    );
+    expect(wrapper.find('input#template-limit').prop('value')).toEqual(
+      1234567890
     );
     expect(
       wrapper.find('AnsibleSelect[name="playbook"]').prop('value')
@@ -273,7 +293,7 @@ describe('<JobTemplateForm />', () => {
     expect(JobTemplatesAPI.updateWebhookKey).toBeCalledWith('1');
     expect(
       wrapper.find('TextInputBase[aria-label="Webhook URL"]').prop('value')
-    ).toContain('/api/v2/workflow_job_templates/57/gitlab/');
+    ).toContain('/api/v2/job_templates/57/gitlab/');
 
     wrapper.update();
 

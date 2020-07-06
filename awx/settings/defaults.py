@@ -94,6 +94,7 @@ USE_TZ = True
 
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'ui', 'static'),
+    os.path.join(BASE_DIR, 'ui_next', 'build', 'static'),
     os.path.join(BASE_DIR, 'static'),
 )
 
@@ -121,8 +122,8 @@ LOGIN_URL = '/api/login/'
 PROJECTS_ROOT = os.path.join(BASE_DIR, 'projects')
 
 # Absolute filesystem path to the directory to host collections for
-# running inventory imports
-INVENTORY_COLLECTIONS_ROOT = os.path.join(BASE_DIR, 'vendor', 'inventory_collections')
+# running inventory imports, isolated playbooks
+AWX_ANSIBLE_COLLECTIONS_PATHS = os.path.join(BASE_DIR, 'vendor', 'awx_ansible_collections')
 
 # Absolute filesystem path to the directory for job status stdout (default for
 # development and tests, default for production defined in production.py). This
@@ -162,13 +163,13 @@ ALLOWED_HOSTS = []
 REMOTE_HOST_HEADERS = ['REMOTE_ADDR', 'REMOTE_HOST']
 
 # If Tower is behind a reverse proxy/load balancer, use this setting to
-# whitelist the proxy IP addresses from which Tower should trust custom
+# allow the proxy IP addresses from which Tower should trust custom
 # REMOTE_HOST_HEADERS header values
 # REMOTE_HOST_HEADERS = ['HTTP_X_FORWARDED_FOR', ''REMOTE_ADDR', 'REMOTE_HOST']
-# PROXY_IP_WHITELIST = ['10.0.1.100', '10.0.1.101']
+# PROXY_IP_ALLOWED_LIST = ['10.0.1.100', '10.0.1.101']
 # If this setting is an empty list (the default), the headers specified by
 # REMOTE_HOST_HEADERS will be trusted unconditionally')
-PROXY_IP_WHITELIST = []
+PROXY_IP_ALLOWED_LIST = []
 
 CUSTOM_VENV_PATHS = []
 
@@ -247,12 +248,13 @@ TEMPLATES = [
             'loaders': [(
                 'django.template.loaders.cached.Loader',
                 ('django.template.loaders.filesystem.Loader',
-                'django.template.loaders.app_directories.Loader',),
+                 'django.template.loaders.app_directories.Loader',),
             )],
             'builtins': ['awx.main.templatetags.swagger'],
         },
         'DIRS': [
             os.path.join(BASE_DIR, 'templates'),
+            os.path.join(BASE_DIR, 'ui_next', 'build'),
         ],
     },
 ]
@@ -386,9 +388,6 @@ AUTH_BASIC_ENABLED = True
 # when trying to access a UI page that requries authentication.
 LOGIN_REDIRECT_OVERRIDE = ''
 
-# If set, serve only minified JS for UI.
-USE_MINIFIED_JS = False
-
 # Default to skipping isolated host key checking (the initial connection will
 # hang on an interactive "The authenticity of host example.org can't be
 # established" message)
@@ -406,19 +405,13 @@ AWX_ISOLATED_CONNECTION_TIMEOUT = 10
 # The time (in seconds) between the periodic isolated heartbeat status check
 AWX_ISOLATED_PERIODIC_CHECK = 600
 
-# Verbosity level for isolated node management tasks
-AWX_ISOLATED_VERBOSITY = 0
-
 DEVSERVER_DEFAULT_ADDR = '0.0.0.0'
 DEVSERVER_DEFAULT_PORT = '8013'
 
 # Set default ports for live server tests.
 os.environ.setdefault('DJANGO_LIVE_TEST_SERVER_ADDRESS', 'localhost:9013-9199')
 
-BROKER_DURABILITY = True
-BROKER_POOL_LIMIT = None
 BROKER_URL = 'unix:///var/run/redis/redis.sock'
-BROKER_TRANSPORT_OPTIONS = {}
 CELERYBEAT_SCHEDULE = {
     'tower_scheduler': {
         'task': 'awx.main.tasks.awx_periodic_scheduler',
@@ -448,10 +441,11 @@ CELERYBEAT_SCHEDULE = {
 }
 
 # Django Caching Configuration
+DJANGO_REDIS_IGNORE_EXCEPTIONS = True
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
-        'LOCATION': 'unix:/var/run/memcached/memcached.sock'
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'unix:/var/run/redis/redis.sock?db=1'
     },
 }
 
@@ -572,6 +566,9 @@ AWX_ROLES_ENABLED = True
 # Note: This setting may be overridden by database settings.
 AWX_COLLECTIONS_ENABLED = True
 
+# Follow symlinks when scanning for playbooks
+AWX_SHOW_PLAYBOOK_LINKS = False
+
 # Settings for primary galaxy server, should be set in the UI
 PRIMARY_GALAXY_URL = ''
 PRIMARY_GALAXY_USERNAME = ''
@@ -644,7 +641,6 @@ INSIGHTS_TRACKING_STATE = False
 
 # Last gather date for Analytics
 AUTOMATION_ANALYTICS_LAST_GATHER = None
-AUTOMATION_ANALYTICS_INTERVAL = 14400
 
 # Default list of modules allowed for ad hoc commands.
 # Note: This setting may be overridden by database settings.
@@ -670,7 +666,7 @@ AD_HOC_COMMANDS = [
     'win_user',
 ]
 
-INV_ENV_VARIABLE_BLACKLIST = ("HOME", "USER", "_", "TERM")
+INV_ENV_VARIABLE_BLOCKED = ("HOME", "USER", "_", "TERM")
 
 # ----------------
 # -- Amazon EC2 --
@@ -698,11 +694,6 @@ EC2_REGION_NAMES = {
     'cn-north-1': _('China (Beijing)'),
 }
 
-EC2_REGIONS_BLACKLIST = [
-    'us-gov-west-1',
-    'cn-north-1',
-]
-
 # Inventory variable name/values for determining if host is active/enabled.
 EC2_ENABLED_VAR = 'ec2_state'
 EC2_ENABLED_VALUE = 'running'
@@ -719,15 +710,13 @@ EC2_EXCLUDE_EMPTY_GROUPS = True
 # ------------
 # -- VMware --
 # ------------
-VMWARE_REGIONS_BLACKLIST = []
-
 # Inventory variable name/values for determining whether a host is
 # active in vSphere.
 VMWARE_ENABLED_VAR = 'guest.gueststate'
 VMWARE_ENABLED_VALUE = 'running'
 
 # Inventory variable name containing the unique instance ID.
-VMWARE_INSTANCE_ID_VAR = 'config.instanceuuid'
+VMWARE_INSTANCE_ID_VAR = 'config.instanceUuid, config.instanceuuid'
 
 # Filter for allowed group and host names when importing inventory
 # from VMware.
@@ -775,8 +764,6 @@ GCE_REGION_CHOICES = [
     ('australia-southeast1-b', _('Australia Southeast (B)')),
     ('australia-southeast1-c', _('Australia Southeast (C)')),
 ]
-GCE_REGIONS_BLACKLIST = []
-
 # Inventory variable name/value for determining whether a host is active
 # in Google Compute Engine.
 GCE_ENABLED_VAR = 'status'
@@ -821,8 +808,6 @@ AZURE_RM_REGION_CHOICES = [
     ('koreacentral', _('Korea Central')),
     ('koreasouth', _('Korea South')),
 ]
-AZURE_RM_REGIONS_BLACKLIST = []
-
 AZURE_RM_GROUP_FILTER = r'^.+$'
 AZURE_RM_HOST_FILTER = r'^.+$'
 AZURE_RM_ENABLED_VAR = 'powerstate'
@@ -872,16 +857,6 @@ SATELLITE6_INSTANCE_ID_VAR = 'foreman.id'
 # SATELLITE6_GROUP_PREFIX and SATELLITE6_GROUP_PATTERNS defined in source vars
 
 # ---------------------
-# ----- CloudForms -----
-# ---------------------
-CLOUDFORMS_ENABLED_VAR = 'cloudforms.power_state'
-CLOUDFORMS_ENABLED_VALUE = 'on'
-CLOUDFORMS_GROUP_FILTER = r'^.+$'
-CLOUDFORMS_HOST_FILTER = r'^.+$'
-CLOUDFORMS_EXCLUDE_EMPTY_GROUPS = True
-CLOUDFORMS_INSTANCE_ID_VAR = 'cloudforms.id'
-
-# ---------------------
 # ----- Custom -----
 # ---------------------
 #CUSTOM_ENABLED_VAR =
@@ -909,19 +884,7 @@ SCM_EXCLUDE_EMPTY_GROUPS = False
 ACTIVITY_STREAM_ENABLED = True
 ACTIVITY_STREAM_ENABLED_FOR_INVENTORY_SYNC = False
 
-# Internal API URL for use by inventory scripts and callback plugin.
-INTERNAL_API_URL = 'http://127.0.0.1:%s' % DEVSERVER_DEFAULT_PORT
-
 CALLBACK_QUEUE = "callback_tasks"
-
-SCHEDULER_QUEUE = "scheduler"
-
-TASK_COMMAND_PORT = 6559
-
-SOCKETIO_NOTIFICATION_PORT = 6557
-SOCKETIO_LISTEN_PORT = 8080
-
-FACT_CACHE_PORT = 6564
 
 # Note: This setting may be overridden by database settings.
 ORG_ADMINS_CAN_SEE_ALL_USERS = True
@@ -957,6 +920,7 @@ CHANNEL_LAYERS = {
         "CONFIG": {
             "hosts": [BROKER_URL],
             "capacity": 10000,
+            "group_expiry": 157784760, # 5 years
         },
     },
 }
@@ -1201,7 +1165,6 @@ LOGGING = {
         },
     }
 }
-LOG_AGGREGATOR_AUDIT = False
 
 # Apply coloring to messages logged to the console
 COLOR_LOGS = False

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import { Card, PageSection } from '@patternfly/react-core';
-import { CardBody } from '@components/Card';
+import { CardBody } from '../../../components/Card';
 import JobTemplateForm from '../shared/JobTemplateForm';
-import { JobTemplatesAPI, OrganizationsAPI } from '@api';
+import { JobTemplatesAPI, OrganizationsAPI } from '../../../api';
 
 function JobTemplateAdd() {
   const [formSubmitError, setFormSubmitError] = useState(null);
@@ -16,6 +16,8 @@ function JobTemplateAdd() {
       initialInstanceGroups,
       credentials,
       webhook_credential,
+      webhook_key,
+      webhook_url,
       ...remainingValues
     } = values;
 

@@ -1,7 +1,18 @@
 # AWX Ansible Collection
 
-This Ansible collection allows for easy interaction with an AWX or Ansible Tower
-server via Ansible playbooks.
+[comment]: # (*******************************************************)
+[comment]: # (*                                                     *)
+[comment]: # (*             WARNING                                 *)
+[comment]: # (*                                                     *)
+[comment]: # (*  This file is templated and not to be               *)
+[comment]: # (*  edited directly! Instead modify:                   *)
+[comment]: # (*  tools/roles/template_galaxy/templates/README.md.j2 *)
+[comment]: # (*                                                     *)
+[comment]: # (*  Changes to the base README.md file are refreshed   *)
+[comment]: # (*  upon build of the collection                       *)
+[comment]: # (*******************************************************)
+
+This Ansible collection allows for easy interaction with an AWX server via Ansible playbooks.
 
 This source for this collection lives in the `awx_collection` folder inside of the
 AWX source.
@@ -33,13 +44,13 @@ The OAuth2 token is the preferred method. You can obtain a token via the
 AWX CLI [login](https://docs.ansible.com/ansible-tower/latest/html/towercli/reference.html#awx-login)
 command.
 
-These can be specified via:
+These can be specified via (from highest to lowest precedence):
 
- - environment variables (most useful when running against localhost)
  - direct module parameters
+ - environment variables (most useful when running against localhost)
  - a config file path specified by the `tower_config_file` parameter
- - a config file at `/etc/tower/tower_cli.cfg`
  - a config file at `~/.tower_cli.cfg`
+ - a config file at `/etc/tower/tower_cli.cfg`
 
 Config file syntax looks like this:
 
@@ -56,6 +67,7 @@ Notable releases of the `awx.awx` collection:
 
  - 7.0.0 is intended to be identical to the content prior to the migration, aside from changes necessary to function as a collection.
  - 11.0.0 has no non-deprecated modules that depend on the deprecated `tower-cli` [PyPI](https://pypi.org/project/ansible-tower-cli/).
+ - 0.0.1-devel is the version you should see if installing from source, which is intended for development and expected to be unstable.
 
 The following notes are changes that may require changes to playbooks:
 
@@ -81,6 +93,7 @@ The following notes are changes that may require changes to playbooks:
  - `tower_job_template` no longer supports the deprecated `extra_vars_path` parameter, please use `extra_vars` with the lookup plugin to replace this functionality.
  - The `notification_configuration` parameter of `tower_notification` has changed from a string to a dict. Please use the `lookup` plugin to read an existing file into a dict.
  - `tower_credential` no longer supports passing a file name to ssh_key_data.
+ - The HipChat `notification_type` has been removed and can no longer be created using the `tower_notification` module.
 
 ## Running Unit Tests
 

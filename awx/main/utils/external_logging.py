@@ -1,5 +1,6 @@
 import os
-
+import shutil
+import tempfile
 import urllib.parse as urlparse
 
 from django.conf import settings
@@ -77,7 +78,7 @@ def construct_rsyslog_conf_template(settings=settings):
             f'action.resumeInterval="{timeout}"'
         ]
         if parsed.path:
-            path = urlparse.quote(parsed.path[1:])
+            path = urlparse.quote(parsed.path[1:], safe='/=')
             if parsed.query:
                 path = f'{path}?{urlparse.quote(parsed.query)}'
             params.append(f'restpath="{path}"')
@@ -112,6 +113,11 @@ def construct_rsyslog_conf_template(settings=settings):
 
 def reconfigure_rsyslog():
     tmpl = construct_rsyslog_conf_template()
-    with open('/var/lib/awx/rsyslog/rsyslog.conf', 'w') as f:
-        f.write(tmpl + '\n')
+    # Write config to a temp file then move it to preserve atomicity
+    with tempfile.TemporaryDirectory(prefix='rsyslog-conf-') as temp_dir:
+        path = temp_dir + '/rsyslog.conf.temp'
+        with open(path, 'w') as f:
+            os.chmod(path, 0o640)
+            f.write(tmpl + '\n')
+        shutil.move(path, '/var/lib/awx/rsyslog/rsyslog.conf')
     supervisor_service_command(command='restart', service='awx-rsyslogd')

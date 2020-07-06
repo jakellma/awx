@@ -4,20 +4,23 @@ import PropTypes from 'prop-types';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Formik, useField } from 'formik';
-import { Config } from '@contexts/Config';
 import { Form, FormGroup, Title } from '@patternfly/react-core';
-import AnsibleSelect from '@components/AnsibleSelect';
-import ContentError from '@components/ContentError';
-import ContentLoading from '@components/ContentLoading';
-import FormActionGroup from '@components/FormActionGroup/FormActionGroup';
+import { Config } from '../../../contexts/Config';
+import AnsibleSelect from '../../../components/AnsibleSelect';
+import ContentError from '../../../components/ContentError';
+import ContentLoading from '../../../components/ContentLoading';
+import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
 import FormField, {
   FieldTooltip,
   FormSubmitError,
-} from '@components/FormField';
-import OrganizationLookup from '@components/Lookup/OrganizationLookup';
-import { CredentialTypesAPI, ProjectsAPI } from '@api';
-import { required } from '@util/validators';
-import { FormColumnLayout, SubFormLayout } from '@components/FormLayout';
+} from '../../../components/FormField';
+import OrganizationLookup from '../../../components/Lookup/OrganizationLookup';
+import { CredentialTypesAPI, ProjectsAPI } from '../../../api';
+import { required } from '../../../util/validators';
+import {
+  FormColumnLayout,
+  SubFormLayout,
+} from '../../../components/FormLayout';
 import {
   GitSubForm,
   HgSubForm,
@@ -169,7 +172,9 @@ function ProjectFormFields({
         fieldId="project-scm-type"
         helperTextInvalid={scmTypeMeta.error}
         isRequired
-        isValid={!scmTypeMeta.touched || !scmTypeMeta.error}
+        validated={
+          !scmTypeMeta.touched || !scmTypeMeta.error ? 'default' : 'error'
+        }
         label={i18n._(t`Source Control Credential Type`)}
       >
         <AnsibleSelect
@@ -201,7 +206,9 @@ function ProjectFormFields({
       </FormGroup>
       {formik.values.scm_type !== '' && (
         <SubFormLayout>
-          <Title size="md">{i18n._(t`Type Details`)}</Title>
+          <Title size="md" headingLevel="h4">
+            {i18n._(t`Type Details`)}
+          </Title>
           <FormColumnLayout>
             {
               {

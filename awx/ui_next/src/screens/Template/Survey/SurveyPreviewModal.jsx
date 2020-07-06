@@ -1,7 +1,6 @@
 import React from 'react';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { PasswordField } from '@components/FormField';
 import { Formik } from 'formik';
 
 import {
@@ -14,6 +13,7 @@ import {
   SelectOption,
   SelectVariant,
 } from '@patternfly/react-core';
+import { PasswordField } from '../../../components/FormField';
 
 function SurveyPreviewModal({
   questions,
@@ -30,9 +30,10 @@ function SurveyPreviewModal({
   return (
     <Modal
       title={i18n._(t`Survey Preview`)}
+      aria-label={i18n._(t`Survey preview modal`)}
       isOpen={isPreviewModalOpen}
       onClose={() => onToggleModalOpen(false)}
-      isSmall
+      variant="small"
     >
       <Formik initialValues={initialValues}>
         {() => (
@@ -97,7 +98,7 @@ function SurveyPreviewModal({
                       isDisabled
                       isReadOnly
                       variant={SelectVariant.typeaheadMulti}
-                      isExpanded={false}
+                      isOpen={false}
                       selections={q.default.length > 0 && q.default.split('\n')}
                       onToggle={() => {}}
                       aria-label={i18n._(t`Multi-Select`)}

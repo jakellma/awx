@@ -2,17 +2,22 @@ import React, { useCallback, useEffect } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import useRequest, { useDeleteItems } from '@util/useRequest';
-import { getQSConfig, parseQueryString } from '@util/qs';
-import { InventoriesAPI, InventorySourcesAPI } from '@api';
+import { Button, Tooltip } from '@patternfly/react-core';
+
+import useRequest, {
+  useDeleteItems,
+  useDismissableError,
+} from '../../../util/useRequest';
+import { getQSConfig, parseQueryString } from '../../../util/qs';
+import { InventoriesAPI, InventorySourcesAPI } from '../../../api';
 import PaginatedDataList, {
   ToolbarAddButton,
   ToolbarDeleteButton,
-} from '@components/PaginatedDataList';
-import useSelected from '@util/useSelected';
-import DatalistToolbar from '@components/DataListToolbar';
-import AlertModal from '@components/AlertModal/AlertModal';
-import ErrorDetail from '@components/ErrorDetail/ErrorDetail';
+} from '../../../components/PaginatedDataList';
+import useSelected from '../../../util/useSelected';
+import DatalistToolbar from '../../../components/DataListToolbar';
+import AlertModal from '../../../components/AlertModal/AlertModal';
+import ErrorDetail from '../../../components/ErrorDetail/ErrorDetail';
 import InventorySourceListItem from './InventorySourceListItem';
 
 const QS_CONFIG = getQSConfig('inventory', {
@@ -28,7 +33,7 @@ function InventorySourceList({ i18n }) {
 
   const {
     isLoading,
-    error,
+    error: fetchError,
     result: { sources, sourceCount, sourceChoices, sourceChoicesOptions },
     request: fetchSources,
   } = useRequest(
@@ -38,7 +43,6 @@ function InventorySourceList({ i18n }) {
         InventoriesAPI.readSources(id, params),
         InventorySourcesAPI.readOptions(),
       ]);
-
       return {
         sources: results[0].data.results,
         sourceCount: results[0].data.count,
@@ -49,7 +53,22 @@ function InventorySourceList({ i18n }) {
     {
       sources: [],
       sourceCount: 0,
+      sourceChoices: [],
     }
+  );
+  const canSyncSources =
+    sources.length > 0 &&
+    sources.every(source => source.summary_fields.user_capabilities.start);
+  const {
+    isLoading: isSyncAllLoading,
+    error: syncAllError,
+    request: syncAll,
+  } = useRequest(
+    useCallback(async () => {
+      if (canSyncSources) {
+        await InventoriesAPI.syncAllSources(id);
+      }
+    }, [id, canSyncSources])
   );
 
   useEffect(() => {
@@ -80,6 +99,7 @@ function InventorySourceList({ i18n }) {
       qsConfig: QS_CONFIG,
     }
   );
+  const { error: syncError, dismissError } = useDismissableError(syncAllError);
 
   const handleDelete = async () => {
     await handleDeleteSources();
@@ -88,12 +108,12 @@ function InventorySourceList({ i18n }) {
   const canAdd =
     sourceChoicesOptions &&
     Object.prototype.hasOwnProperty.call(sourceChoicesOptions, 'POST');
-  const detailUrl = `/inventories/${inventoryType}/${id}/sources/`;
+  const listUrl = `/inventories/${inventoryType}/${id}/sources/`;
   return (
     <>
       <PaginatedDataList
-        contentError={error || deletionError}
-        hasContentLoading={isLoading || isDeleteLoading}
+        contentError={fetchError}
+        hasContentLoading={isLoading || isDeleteLoading || isSyncAllLoading}
         items={sources}
         itemCount={sourceCount}
         pluralizedItemName={i18n._(t`Inventory Sources`)}
@@ -109,7 +129,7 @@ function InventorySourceList({ i18n }) {
             qsConfig={QS_CONFIG}
             additionalControls={[
               ...(canAdd
-                ? [<ToolbarAddButton key="add" linkTo={`${detailUrl}add`} />]
+                ? [<ToolbarAddButton key="add" linkTo={`${listUrl}add`} />]
                 : []),
               <ToolbarDeleteButton
                 key="delete"
@@ -117,6 +137,23 @@ function InventorySourceList({ i18n }) {
                 itemsToDelete={selected}
                 pluralizedItemName={i18n._(t`Inventory Sources`)}
               />,
+              ...(canSyncSources
+                ? [
+                    <Tooltip
+                      key="update"
+                      content={i18n._(t`Sync all sources`)}
+                      position="top"
+                    >
+                      <Button
+                        onClick={syncAll}
+                        aria-label={i18n._(t`Sync all`)}
+                        variant="secondary"
+                      >
+                        {i18n._(t`Sync all`)}
+                      </Button>
+                    </Tooltip>,
+                  ]
+                : []),
             ]}
           />
         )}
@@ -133,21 +170,34 @@ function InventorySourceList({ i18n }) {
               source={inventorySource}
               onSelect={() => handleSelect(inventorySource)}
               label={label}
-              detailUrl={`${detailUrl}${inventorySource.id}`}
+              detailUrl={`${listUrl}${inventorySource.id}`}
               isSelected={selected.some(row => row.id === inventorySource.id)}
             />
           );
         }}
       />
+      {syncError && (
+        <AlertModal
+          aria-label={i18n._(t`Sync error`)}
+          isOpen={syncError}
+          variant="error"
+          title={i18n._(t`Error!`)}
+          onClose={dismissError}
+        >
+          {i18n._(t`Failed to sync some or all inventory sources.`)}
+          <ErrorDetail error={syncError} />
+        </AlertModal>
+      )}
+
       {deletionError && (
         <AlertModal
-          aria-label={i18n._(t`Delete Error`)}
+          aria-label={i18n._(t`Delete error`)}
           isOpen={deletionError}
           variant="error"
           title={i18n._(t`Error!`)}
           onClose={clearDeletionError}
         >
-          {i18n._(t`Failed to delete one or more Inventory Sources.`)}
+          {i18n._(t`Failed to delete one or more inventory sources.`)}
           <ErrorDetail error={deletionError} />
         </AlertModal>
       )}

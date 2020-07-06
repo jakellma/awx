@@ -1,3 +1,4 @@
+import 'styled-components/macro';
 import React from 'react';
 import { t } from '@lingui/macro';
 import { withI18n } from '@lingui/react';
@@ -5,7 +6,6 @@ import { Link } from 'react-router-dom';
 import {
   Button as _Button,
   Chip,
-  ChipGroup,
   DataListAction as _DataListAction,
   DataListCheck,
   DataListItemCells,
@@ -14,9 +14,10 @@ import {
   Stack,
   StackItem,
 } from '@patternfly/react-core';
-import DataListCell from '@components/DataListCell';
 import { CaretDownIcon, CaretUpIcon } from '@patternfly/react-icons';
 import styled from 'styled-components';
+import DataListCell from '../../../components/DataListCell';
+import ChipGroup from '../../../components/ChipGroup';
 
 const DataListAction = styled(_DataListAction)`
   margin-left: 0;
@@ -119,7 +120,10 @@ function SurveyListItem({
               )}
               {[question.type].includes('multiselect') &&
                 question.default.length > 0 && (
-                  <ChipGroup numChips={5}>
+                  <ChipGroup
+                    numChips={5}
+                    totalChips={question.default.split('\n').length}
+                  >
                     {question.default.split('\n').map(chip => (
                       <Chip key={chip} isReadOnly>
                         {chip}

@@ -3,11 +3,11 @@ import { useLocation } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { func, shape } from 'prop-types';
-import { InventorySourcesAPI } from '@api';
-import { getQSConfig, parseQueryString } from '@util/qs';
-import PaginatedDataList from '@components/PaginatedDataList';
-import DataListToolbar from '@components/DataListToolbar';
-import CheckboxListItem from '@components/CheckboxListItem';
+import { InventorySourcesAPI } from '../../../../../../api';
+import { getQSConfig, parseQueryString } from '../../../../../../util/qs';
+import PaginatedDataList from '../../../../../../components/PaginatedDataList';
+import DataListToolbar from '../../../../../../components/DataListToolbar';
+import CheckboxListItem from '../../../../../../components/CheckboxListItem';
 
 const QS_CONFIG = getQSConfig('inventory_sources', {
   page: 1,
@@ -79,7 +79,6 @@ function InventorySourcesList({ i18n, nodeResource, onUpdateNodeResource }) {
             [`azure_rm`, i18n._(t`Microsoft Azure Resource Manager`)],
             [`vmware`, i18n._(t`VMware vCenter`)],
             [`satellite6`, i18n._(t`Red Hat Satellite 6`)],
-            [`cloudforms`, i18n._(t`Red Hat CloudForms`)],
             [`openstack`, i18n._(t`OpenStack`)],
             [`rhv`, i18n._(t`Red Hat Virtualization`)],
             [`tower`, i18n._(t`Ansible Tower`)],

@@ -17,7 +17,6 @@ DOCUMENTATION = '''
 ---
 module: tower_label
 author: "Wayne Witzel III (@wwitzel3)"
-version_added: "2.3"
 short_description: create, update, or destroy Ansible Tower labels.
 description:
     - Create, update, or destroy Ansible Tower labels. See
@@ -45,12 +44,6 @@ options:
       default: "present"
       choices: ["present"]
       type: str
-    tower_oauthtoken:
-      description:
-        - The Tower OAuth token to use.
-        - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
-      type: str
-      version_added: "3.7"
 extends_documentation_fragment: awx.awx.auth
 '''
 

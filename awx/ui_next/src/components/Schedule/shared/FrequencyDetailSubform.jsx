@@ -1,8 +1,9 @@
+import 'styled-components/macro';
 import React from 'react';
 import styled from 'styled-components';
 import { useField } from 'formik';
 import { withI18n } from '@lingui/react';
-import { t } from '@lingui/macro';
+import { t, Trans } from '@lingui/macro';
 import { RRule } from 'rrule';
 import {
   Checkbox as _Checkbox,
@@ -10,9 +11,9 @@ import {
   Radio,
   TextInput,
 } from '@patternfly/react-core';
-import AnsibleSelect from '@components/AnsibleSelect';
-import FormField from '@components/FormField';
-import { required } from '@util/validators';
+import AnsibleSelect from '../../AnsibleSelect';
+import FormField from '../../FormField';
+import { required } from '../../../util/validators';
 
 const RunOnRadio = styled(Radio)`
   label {
@@ -44,7 +45,7 @@ export function requiredPositiveInteger(i18n) {
   return value => {
     if (typeof value === 'number') {
       if (!Number.isInteger(value)) {
-        return i18n._(t`This field must an integer`);
+        return i18n._(t`This field must be an integer`);
       }
       if (value < 1) {
         return i18n._(t`This field must be greater than 0`);
@@ -140,7 +141,11 @@ const FrequencyDetailSubform = ({ i18n }) => {
       value: 7,
       label: i18n._(t`July`),
     },
-    { key: 'august', value: 8, label: i18n._(t`August`) },
+    {
+      key: 'august',
+      value: 8,
+      label: i18n._(t`August`),
+    },
     {
       key: 'september',
       value: 9,
@@ -226,7 +231,9 @@ const FrequencyDetailSubform = ({ i18n }) => {
         fieldId="schedule-run-every"
         helperTextInvalid={intervalMeta.error}
         isRequired
-        isValid={!intervalMeta.touched || !intervalMeta.error}
+        validated={
+          !intervalMeta.touched || !intervalMeta.error ? 'default' : 'error'
+        }
         label={i18n._(t`Run every`)}
       >
         <div css="display: flex">
@@ -250,7 +257,11 @@ const FrequencyDetailSubform = ({ i18n }) => {
           fieldId="schedule-days-of-week"
           helperTextInvalid={daysOfWeekMeta.error}
           isRequired
-          isValid={!daysOfWeekMeta.touched || !daysOfWeekMeta.error}
+          validated={
+            !daysOfWeekMeta.touched || !daysOfWeekMeta.error
+              ? 'default'
+              : 'error'
+          }
           label={i18n._(t`On days`)}
         >
           <div css="display: flex">
@@ -334,7 +345,9 @@ const FrequencyDetailSubform = ({ i18n }) => {
             fieldId="schedule-run-on"
             helperTextInvalid={runOnMeta.error}
             isRequired
-            isValid={!runOnMeta.touched || !runOnMeta.error}
+            validated={
+              !runOnMeta.touched || !runOnMeta.error ? 'default' : 'error'
+            }
             label={i18n._(t`Run on`)}
           >
             <RunOnRadio
@@ -343,8 +356,11 @@ const FrequencyDetailSubform = ({ i18n }) => {
               label={
                 <div css="display: flex;align-items: center;">
                   {frequency?.value === 'month' && (
-                    <span id="foobar" css="margin-right: 10px;">
-                      Day
+                    <span
+                      id="radio-schedule-run-on-day"
+                      css="margin-right: 10px;"
+                    >
+                      <Trans>Day</Trans>
                     </span>
                   )}
                   {frequency?.value === 'year' && (
@@ -382,8 +398,11 @@ const FrequencyDetailSubform = ({ i18n }) => {
               name="runOn"
               label={
                 <div css="display: flex;align-items: center;">
-                  <span id="foobar" css="margin-right: 10px;">
-                    The
+                  <span
+                    id="radio-schedule-run-on-the"
+                    css="margin-right: 10px;"
+                  >
+                    <Trans>The</Trans>
                   </span>
                   <AnsibleSelect
                     id="schedule-run-on-the-occurrence"
@@ -460,12 +479,20 @@ const FrequencyDetailSubform = ({ i18n }) => {
                     {...runOnTheDay}
                   />
                   {frequency?.value === 'year' && (
-                    <AnsibleSelect
-                      id="schedule-run-on-the-month"
-                      isDisabled={runOn.value !== 'the'}
-                      data={monthOptions}
-                      {...runOnTheMonth}
-                    />
+                    <>
+                      <span
+                        id="of-schedule-run-on-the-month"
+                        css="margin-left: 10px;"
+                      >
+                        <Trans>of</Trans>
+                      </span>
+                      <AnsibleSelect
+                        id="schedule-run-on-the-month"
+                        isDisabled={runOn.value !== 'the'}
+                        data={monthOptions}
+                        {...runOnTheMonth}
+                      />
+                    </>
                   )}
                 </div>
               }
@@ -483,7 +510,7 @@ const FrequencyDetailSubform = ({ i18n }) => {
         fieldId="schedule-end"
         helperTextInvalid={endMeta.error}
         isRequired
-        isValid={!endMeta.touched || !endMeta.error}
+        validated={!endMeta.touched || !endMeta.error ? 'default' : 'error'}
         label={i18n._(t`End`)}
       >
         <Radio
@@ -537,7 +564,11 @@ const FrequencyDetailSubform = ({ i18n }) => {
           fieldId="schedule-end-datetime"
           helperTextInvalid={endDateTimeMeta.error}
           isRequired
-          isValid={!endDateTimeMeta.touched || !endDateTimeMeta.error}
+          validated={
+            !endDateTimeMeta.touched || !endDateTimeMeta.error
+              ? 'default'
+              : 'error'
+          }
           label={i18n._(t`End date/time`)}
         >
           <input

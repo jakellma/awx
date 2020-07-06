@@ -16,7 +16,6 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: tower_host
-version_added: "2.3"
 author: "Wayne Witzel III (@wwitzel3)"
 short_description: create, update, or destroy Ansible Tower host.
 description:
@@ -32,7 +31,6 @@ options:
       description:
         - To use when changing a hosts's name.
       type: str
-      version_added: "3.7"
     description:
       description:
         - The description to use for the host.
@@ -57,12 +55,6 @@ options:
       choices: ["present", "absent"]
       default: "present"
       type: str
-    tower_oauthtoken:
-      description:
-        - The Tower OAuth token to use.
-        - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
-      type: str
-      version_added: "3.7"
 extends_documentation_fragment: awx.awx.auth
 '''
 

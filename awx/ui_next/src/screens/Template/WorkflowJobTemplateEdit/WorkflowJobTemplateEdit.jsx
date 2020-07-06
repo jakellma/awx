@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
 
-import { CardBody } from '@components/Card';
-import { getAddedAndRemoved } from '@util/lists';
-import { WorkflowJobTemplatesAPI, OrganizationsAPI } from '@api';
+import { CardBody } from '../../../components/Card';
+import { getAddedAndRemoved } from '../../../util/lists';
+import { WorkflowJobTemplatesAPI, OrganizationsAPI } from '../../../api';
 import { WorkflowJobTemplateForm } from '../shared';
 
 function WorkflowJobTemplateEdit({ template }) {
@@ -19,7 +19,7 @@ function WorkflowJobTemplateEdit({ template }) {
       webhook_key,
       ...templatePayload
     } = values;
-    templatePayload.inventory = inventory?.id;
+    templatePayload.inventory = inventory?.id || null;
     templatePayload.organization = organization?.id;
     templatePayload.webhook_credential = webhook_credential?.id || null;
 

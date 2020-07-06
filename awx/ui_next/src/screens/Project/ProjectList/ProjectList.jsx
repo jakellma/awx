@@ -4,16 +4,16 @@ import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Card, PageSection } from '@patternfly/react-core';
 
-import { ProjectsAPI } from '@api';
-import useRequest, { useDeleteItems } from '@util/useRequest';
-import AlertModal from '@components/AlertModal';
-import DataListToolbar from '@components/DataListToolbar';
-import ErrorDetail from '@components/ErrorDetail';
+import { ProjectsAPI } from '../../../api';
+import useRequest, { useDeleteItems } from '../../../util/useRequest';
+import AlertModal from '../../../components/AlertModal';
+import DataListToolbar from '../../../components/DataListToolbar';
+import ErrorDetail from '../../../components/ErrorDetail';
 import PaginatedDataList, {
   ToolbarAddButton,
   ToolbarDeleteButton,
-} from '@components/PaginatedDataList';
-import { getQSConfig, parseQueryString } from '@util/qs';
+} from '../../../components/PaginatedDataList';
+import { getQSConfig, parseQueryString } from '../../../util/qs';
 
 import ProjectListItem from './ProjectListItem';
 
@@ -170,6 +170,7 @@ function ProjectList({ i18n }) {
             )}
             renderItem={o => (
               <ProjectListItem
+                fetchProjects={fetchProjects}
                 key={o.id}
                 project={o}
                 detailUrl={`${match.url}/${o.id}`}
@@ -188,6 +189,7 @@ function ProjectList({ i18n }) {
       <AlertModal
         isOpen={deletionError}
         variant="error"
+        aria-label={i18n._(t`Deletion Error`)}
         title={i18n._(t`Error!`)}
         onClose={clearDeletionError}
       >

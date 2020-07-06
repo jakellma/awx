@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Button } from '@patternfly/react-core';
-import AlertModal from '@components/AlertModal';
+import AlertModal from '../AlertModal';
 
 function DeleteButton({
   onConfirm,
@@ -11,6 +11,7 @@ function DeleteButton({
   i18n,
   variant,
   children,
+  isDisabled,
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -19,6 +20,7 @@ function DeleteButton({
       <Button
         variant={variant || 'danger'}
         aria-label={i18n._(t`Delete`)}
+        isDisabled={isDisabled}
         onClick={() => setIsOpen(true)}
       >
         {children || i18n._(t`Delete`)}
@@ -33,6 +35,7 @@ function DeleteButton({
             key="delete"
             variant="danger"
             aria-label={i18n._(t`Delete`)}
+            isDisabled={isDisabled}
             onClick={onConfirm}
           >
             {i18n._(t`Delete`)}

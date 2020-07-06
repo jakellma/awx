@@ -3,12 +3,13 @@ import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Link } from 'react-router-dom';
 
-import { Chip, ChipGroup, List, ListItem } from '@patternfly/react-core';
-import CredentialChip from '@components/CredentialChip';
-import { Detail } from '@components/DetailList';
-import { VariablesDetail } from '@components/CodeMirrorInput';
-import Sparkline from '@components/Sparkline';
-import { toTitleCase } from '@util/strings';
+import { Chip, List, ListItem } from '@patternfly/react-core';
+import CredentialChip from '../CredentialChip';
+import ChipGroup from '../ChipGroup';
+import { Detail } from '../DetailList';
+import { VariablesDetail } from '../CodeMirrorInput';
+import Sparkline from '../Sparkline';
+import { toTitleCase } from '../../util/strings';
 
 function PromptWFJobTemplateDetail({ i18n, resource }) {
   const {
@@ -108,7 +109,10 @@ function PromptWFJobTemplateDetail({ i18n, resource }) {
           fullWidth
           label={i18n._(t`Labels`)}
           value={
-            <ChipGroup numChips={5}>
+            <ChipGroup
+              numChips={5}
+              totalChips={summary_fields.labels.results.length}
+            >
               {summary_fields.labels.results.map(label => (
                 <Chip key={label.id} isReadOnly>
                   {label.name}

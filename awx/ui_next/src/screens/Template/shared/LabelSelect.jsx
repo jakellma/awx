@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { func, arrayOf, number, shape, string, oneOfType } from 'prop-types';
 import { Select, SelectOption, SelectVariant } from '@patternfly/react-core';
-import { LabelsAPI } from '@api';
-import { useSyncedSelectValue } from '@components/MultiSelect';
+import { LabelsAPI } from '../../../api';
+import { useSyncedSelectValue } from '../../../components/MultiSelect';
 
 async function loadLabelOptions(setLabels, onError) {
   let labels;
@@ -29,7 +29,8 @@ async function loadLabelOptions(setLabels, onError) {
   }
 }
 
-function LabelSelect({ value, placeholder, onChange, onError }) {
+function LabelSelect({ value, placeholder, onChange, onError, createText }) {
+  const [isLoading, setIsLoading] = useState(true);
   const { selections, onSelect, options, setOptions } = useSyncedSelectValue(
     value,
     onChange
@@ -41,7 +42,10 @@ function LabelSelect({ value, placeholder, onChange, onError }) {
   };
 
   useEffect(() => {
-    loadLabelOptions(setOptions, onError);
+    (async () => {
+      await loadLabelOptions(setOptions, onError);
+      setIsLoading(false);
+    })();
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
@@ -77,10 +81,12 @@ function LabelSelect({ value, placeholder, onChange, onError }) {
         }
         return label;
       }}
+      isDisabled={isLoading}
       selections={selections}
-      isExpanded={isExpanded}
-      ariaLabelledBy="label-select"
+      isOpen={isExpanded}
+      aria-labelledby="label-select"
       placeholderText={placeholder}
+      createText={createText}
     >
       {renderOptions(options)}
     </Select>

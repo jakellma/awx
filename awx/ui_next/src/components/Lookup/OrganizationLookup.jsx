@@ -3,11 +3,11 @@ import { node, func, bool } from 'prop-types';
 import { withRouter } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { OrganizationsAPI } from '@api';
-import { Organization } from '@types';
 import { FormGroup } from '@patternfly/react-core';
-import { getQSConfig, parseQueryString } from '@util/qs';
-import OptionsList from '@components/OptionsList';
+import { OrganizationsAPI } from '../../api';
+import { Organization } from '../../types';
+import { getQSConfig, parseQueryString } from '../../util/qs';
+import OptionsList from '../OptionsList';
 import Lookup from './Lookup';
 import LookupErrorMessage from './shared/LookupErrorMessage';
 
@@ -49,7 +49,7 @@ function OrganizationLookup({
       fieldId="organization"
       helperTextInvalid={helperTextInvalid}
       isRequired={required}
-      isValid={isValid}
+      validated={isValid ? 'default' : 'error'}
       label={i18n._(t`Organization`)}
     >
       <Lookup

@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import { Link, useHistory } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { WorkflowJobTemplatesAPI } from '@api';
 import {
   Chip,
-  ChipGroup,
   Button,
   TextList,
   TextListItem,
@@ -13,17 +11,23 @@ import {
   TextListItemVariants,
   Label,
 } from '@patternfly/react-core';
+import { WorkflowJobTemplatesAPI } from '../../../api';
 
-import AlertModal from '@components/AlertModal';
-import { CardBody, CardActionsRow } from '@components/Card';
-import { VariablesDetail } from '@components/CodeMirrorInput';
-import ContentLoading from '@components/ContentLoading';
-import DeleteButton from '@components/DeleteButton';
-import { DetailList, Detail, UserDateDetail } from '@components/DetailList';
-import ErrorDetail from '@components/ErrorDetail';
-import LaunchButton from '@components/LaunchButton';
-import Sparkline from '@components/Sparkline';
-import { toTitleCase } from '@util/strings';
+import AlertModal from '../../../components/AlertModal';
+import { CardBody, CardActionsRow } from '../../../components/Card';
+import ChipGroup from '../../../components/ChipGroup';
+import { VariablesDetail } from '../../../components/CodeMirrorInput';
+import DeleteButton from '../../../components/DeleteButton';
+import {
+  DetailList,
+  Detail,
+  UserDateDetail,
+} from '../../../components/DetailList';
+import ErrorDetail from '../../../components/ErrorDetail';
+import LaunchButton from '../../../components/LaunchButton';
+import Sparkline from '../../../components/Sparkline';
+import { toTitleCase } from '../../../util/strings';
+import useRequest, { useDismissableError } from '../../../util/useRequest';
 
 function WorkflowJobTemplateDetail({ template, i18n }) {
   const {
@@ -44,9 +48,6 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
   const urlOrigin = window.location.origin;
   const history = useHistory();
 
-  const [deletionError, setDeletionError] = useState(null);
-  const [hasContentLoading, setHasContentLoading] = useState(false);
-
   const renderOptionsField =
     template.allow_simultaneous || template.webhook_service;
 
@@ -65,20 +66,18 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
     </TextList>
   );
 
-  if (hasContentLoading) {
-    return <ContentLoading />;
-  }
-
-  const handleDelete = async () => {
-    setHasContentLoading(true);
-    try {
+  const {
+    request: deleteWorkflowJobTemplate,
+    isLoading,
+    error: deleteError,
+  } = useRequest(
+    useCallback(async () => {
       await WorkflowJobTemplatesAPI.destroy(id);
       history.push(`/templates`);
-    } catch (error) {
-      setDeletionError(error);
-    }
-    setHasContentLoading(false);
-  };
+    }, [id, history])
+  );
+
+  const { error, dismissError } = useDismissableError(deleteError);
 
   const inventoryValue = (kind, inventoryId) => {
     const inventorykind = kind === 'smart' ? 'smart_inventory' : 'inventory';
@@ -88,7 +87,7 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
         <Link to={`/inventories/${inventorykind}/${inventoryId}/details`}>
           <Label>{summary_fields.inventory.name}</Label>
         </Link>
-        <span> {i18n._(t`(Prompt on Launch)`)}</span>
+        <span> {i18n._(t`(Prompt on launch)`)}</span>
       </>
     ) : (
       <Link to={`/inventories/${inventorykind}/${inventoryId}/details`}>
@@ -168,7 +167,10 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
             fullWidth
             label={i18n._(t`Labels`)}
             value={
-              <ChipGroup>
+              <ChipGroup
+                numChips={3}
+                totalChips={summary_fields.labels.results.length}
+              >
                 {summary_fields.labels.results.map(l => (
                   <Chip key={l.id} isReadOnly>
                     {l.name}
@@ -219,21 +221,22 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
             <DeleteButton
               name={name}
               modalTitle={i18n._(t`Delete Workflow Job Template`)}
-              onConfirm={handleDelete}
+              onConfirm={deleteWorkflowJobTemplate}
+              isDisabled={isLoading}
             >
               {i18n._(t`Delete`)}
             </DeleteButton>
           )}
       </CardActionsRow>
-      {deletionError && (
+      {error && (
         <AlertModal
-          isOpen={deletionError}
+          isOpen={error}
           variant="error"
           title={i18n._(t`Error!`)}
-          onClose={() => setDeletionError(null)}
+          onClose={dismissError}
         >
           {i18n._(t`Failed to delete workflow job template.`)}
-          <ErrorDetail error={deletionError} />
+          <ErrorDetail error={error} />
         </AlertModal>
       )}
     </CardBody>

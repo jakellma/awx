@@ -1,10 +1,9 @@
-import React, { Fragment, useState, useEffect } from 'react';
+import React, { Fragment, useState, useEffect, useCallback } from 'react';
 import { Link, useHistory, useParams } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import {
   Button,
   Chip,
-  ChipGroup,
   TextList,
   TextListItem,
   TextListItemVariants,
@@ -13,22 +12,24 @@ import {
 } from '@patternfly/react-core';
 import { t } from '@lingui/macro';
 
-import AlertModal from '@components/AlertModal';
-import { CardBody, CardActionsRow } from '@components/Card';
-import ContentError from '@components/ContentError';
-import ContentLoading from '@components/ContentLoading';
-import CredentialChip from '@components/CredentialChip';
+import AlertModal from '../../../components/AlertModal';
+import { CardBody, CardActionsRow } from '../../../components/Card';
+import ChipGroup from '../../../components/ChipGroup';
+import ContentError from '../../../components/ContentError';
+import ContentLoading from '../../../components/ContentLoading';
+import CredentialChip from '../../../components/CredentialChip';
 import {
   Detail,
   DetailList,
   DeletedDetail,
   UserDateDetail,
-} from '@components/DetailList';
-import DeleteButton from '@components/DeleteButton';
-import ErrorDetail from '@components/ErrorDetail';
-import LaunchButton from '@components/LaunchButton';
-import { VariablesDetail } from '@components/CodeMirrorInput';
-import { JobTemplatesAPI } from '@api';
+} from '../../../components/DetailList';
+import DeleteButton from '../../../components/DeleteButton';
+import ErrorDetail from '../../../components/ErrorDetail';
+import LaunchButton from '../../../components/LaunchButton';
+import { VariablesDetail } from '../../../components/CodeMirrorInput';
+import { JobTemplatesAPI } from '../../../api';
+import useRequest, { useDismissableError } from '../../../util/useRequest';
 
 function JobTemplateDetail({ i18n, template }) {
   const {
@@ -59,7 +60,6 @@ function JobTemplateDetail({ i18n, template }) {
     webhook_key,
   } = template;
   const [contentError, setContentError] = useState(null);
-  const [deletionError, setDeletionError] = useState(null);
   const [hasContentLoading, setHasContentLoading] = useState(false);
   const [instanceGroups, setInstanceGroups] = useState([]);
   const { id: templateId } = useParams();
@@ -82,16 +82,18 @@ function JobTemplateDetail({ i18n, template }) {
     })();
   }, [templateId]);
 
-  const handleDelete = async () => {
-    setHasContentLoading(true);
-    try {
+  const {
+    request: deleteJobTemplate,
+    isLoading,
+    error: deleteError,
+  } = useRequest(
+    useCallback(async () => {
       await JobTemplatesAPI.destroy(templateId);
       history.push(`/templates`);
-    } catch (error) {
-      setDeletionError(error);
-    }
-    setHasContentLoading(false);
-  };
+    }, [templateId, history])
+  );
+
+  const { error, dismissError } = useDismissableError(deleteError);
 
   const canLaunch =
     summary_fields.user_capabilities && summary_fields.user_capabilities.start;
@@ -143,7 +145,7 @@ function JobTemplateDetail({ i18n, template }) {
         <Link to={`/inventories/${inventorykind}/${id}/details`}>
           {summary_fields.inventory.name}
         </Link>
-        <span> {i18n._(t`(Prompt on Launch)`)}</span>
+        <span> {i18n._(t`(Prompt on launch)`)}</span>
       </Fragment>
     ) : (
       <Link to={`/inventories/${inventorykind}/${id}/details`}>
@@ -281,7 +283,10 @@ function JobTemplateDetail({ i18n, template }) {
             fullWidth
             label={i18n._(t`Credentials`)}
             value={
-              <ChipGroup numChips={5}>
+              <ChipGroup
+                numChips={5}
+                totalChips={summary_fields.credentials.length}
+              >
                 {summary_fields.credentials.map(c => (
                   <CredentialChip key={c.id} credential={c} isReadOnly />
                 ))}
@@ -294,7 +299,10 @@ function JobTemplateDetail({ i18n, template }) {
             fullWidth
             label={i18n._(t`Labels`)}
             value={
-              <ChipGroup numChips={5}>
+              <ChipGroup
+                numChips={5}
+                totalChips={summary_fields.labels.results.length}
+              >
                 {summary_fields.labels.results.map(l => (
                   <Chip key={l.id} isReadOnly>
                     {l.name}
@@ -309,7 +317,7 @@ function JobTemplateDetail({ i18n, template }) {
             fullWidth
             label={i18n._(t`Instance Groups`)}
             value={
-              <ChipGroup numChips={5}>
+              <ChipGroup numChips={5} totalChips={instanceGroups.length}>
                 {instanceGroups.map(ig => (
                   <Chip key={ig.id} isReadOnly>
                     {ig.name}
@@ -324,7 +332,7 @@ function JobTemplateDetail({ i18n, template }) {
             fullWidth
             label={i18n._(t`Job Tags`)}
             value={
-              <ChipGroup numChips={5}>
+              <ChipGroup numChips={5} totalChips={job_tags.split(',').length}>
                 {job_tags.split(',').map(jobTag => (
                   <Chip key={jobTag} isReadOnly>
                     {jobTag}
@@ -339,7 +347,7 @@ function JobTemplateDetail({ i18n, template }) {
             fullWidth
             label={i18n._(t`Skip Tags`)}
             value={
-              <ChipGroup numChips={5}>
+              <ChipGroup numChips={5} totalChips={skip_tags.split(',').length}>
                 {skip_tags.split(',').map(skipTag => (
                   <Chip key={skipTag} isReadOnly>
                     {skipTag}
@@ -380,22 +388,23 @@ function JobTemplateDetail({ i18n, template }) {
             <DeleteButton
               name={name}
               modalTitle={i18n._(t`Delete Job Template`)}
-              onConfirm={handleDelete}
+              onConfirm={deleteJobTemplate}
+              isDisabled={isLoading}
             >
               {i18n._(t`Delete`)}
             </DeleteButton>
           )}
       </CardActionsRow>
       {/* Update delete modal to show dependencies https://github.com/ansible/awx/issues/5546 */}
-      {deletionError && (
+      {error && (
         <AlertModal
-          isOpen={deletionError}
+          isOpen={error}
           variant="error"
           title={i18n._(t`Error!`)}
-          onClose={() => setDeletionError(null)}
+          onClose={dismissError}
         >
           {i18n._(t`Failed to delete job template.`)}
-          <ErrorDetail error={deletionError} />
+          <ErrorDetail error={error} />
         </AlertModal>
       )}
     </CardBody>

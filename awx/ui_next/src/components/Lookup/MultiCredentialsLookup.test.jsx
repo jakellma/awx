@@ -1,10 +1,13 @@
 import React from 'react';
 import { act } from 'react-dom/test-utils';
-import { mountWithContexts, waitForElement } from '@testUtils/enzymeHelpers';
+import {
+  mountWithContexts,
+  waitForElement,
+} from '../../../testUtils/enzymeHelpers';
 import MultiCredentialsLookup from './MultiCredentialsLookup';
-import { CredentialsAPI, CredentialTypesAPI } from '@api';
+import { CredentialsAPI, CredentialTypesAPI } from '../../api';
 
-jest.mock('@api');
+jest.mock('../../api');
 
 describe('<MultiCredentialsLookup />', () => {
   let wrapper;
@@ -78,7 +81,7 @@ describe('<MultiCredentialsLookup />', () => {
     });
     const chip = wrapper.find('CredentialChip');
     expect(chip).toHaveLength(5);
-    const button = chip.at(1).find('ChipButton');
+    const button = chip.at(1).find('Chip Button');
     await act(async () => {
       button.invoke('onClick')();
     });
@@ -101,7 +104,10 @@ describe('<MultiCredentialsLookup />', () => {
         />
       );
     });
-    const searchButton = await waitForElement(wrapper, 'SearchButton');
+    const searchButton = await waitForElement(
+      wrapper,
+      'Button[aria-label="Search"]'
+    );
     await act(async () => {
       searchButton.invoke('onClick')();
     });
@@ -137,7 +143,10 @@ describe('<MultiCredentialsLookup />', () => {
         />
       );
     });
-    const searchButton = await waitForElement(wrapper, 'SearchButton');
+    const searchButton = await waitForElement(
+      wrapper,
+      'Button[aria-label="Search"]'
+    );
     await act(async () => {
       searchButton.invoke('onClick')();
     });
@@ -153,7 +162,7 @@ describe('<MultiCredentialsLookup />', () => {
       });
     });
     wrapper.update();
-    act(() => {
+    await act(async () => {
       wrapper.find('Button[variant="primary"]').invoke('onClick')();
     });
     expect(onChange).toBeCalledWith([
@@ -177,7 +186,10 @@ describe('<MultiCredentialsLookup />', () => {
         />
       );
     });
-    const searchButton = await waitForElement(wrapper, 'SearchButton');
+    const searchButton = await waitForElement(
+      wrapper,
+      'Button[aria-label="Search"]'
+    );
     await act(async () => {
       searchButton.invoke('onClick')();
     });
@@ -198,7 +210,7 @@ describe('<MultiCredentialsLookup />', () => {
       });
     });
     wrapper.update();
-    act(() => {
+    await act(async () => {
       wrapper.find('Button[variant="primary"]').invoke('onClick')();
     });
     expect(onChange).toBeCalledWith([
@@ -223,7 +235,10 @@ describe('<MultiCredentialsLookup />', () => {
         />
       );
     });
-    const searchButton = await waitForElement(wrapper, 'SearchButton');
+    const searchButton = await waitForElement(
+      wrapper,
+      'Button[aria-label="Search"]'
+    );
     await act(async () => {
       searchButton.invoke('onClick')();
     });
@@ -245,7 +260,7 @@ describe('<MultiCredentialsLookup />', () => {
       });
     });
     wrapper.update();
-    act(() => {
+    await act(async () => {
       wrapper.find('Button[variant="primary"]').invoke('onClick')();
     });
     expect(onChange).toBeCalledWith([
@@ -276,7 +291,10 @@ describe('<MultiCredentialsLookup />', () => {
         />
       );
     });
-    const searchButton = await waitForElement(wrapper, 'SearchButton');
+    const searchButton = await waitForElement(
+      wrapper,
+      'Button[aria-label="Search"]'
+    );
     await act(async () => {
       searchButton.invoke('onClick')();
     });
@@ -298,7 +316,7 @@ describe('<MultiCredentialsLookup />', () => {
       });
     });
     wrapper.update();
-    act(() => {
+    await act(async () => {
       wrapper.find('Button[variant="primary"]').invoke('onClick')();
     });
     expect(onChange).toBeCalledWith([

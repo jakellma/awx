@@ -24,6 +24,32 @@ class Users extends Base {
       params,
     });
   }
+
+  readRoles(userId, params) {
+    return this.http.get(`${this.baseUrl}${userId}/roles/`, {
+      params,
+    });
+  }
+
+  readRoleOptions(userId) {
+    return this.http.options(`${this.baseUrl}${userId}/roles/`);
+  }
+
+  readTeams(userId, params) {
+    return this.http.get(`${this.baseUrl}${userId}/teams/`, {
+      params,
+    });
+  }
+
+  readTeamsOptions(userId) {
+    return this.http.options(`${this.baseUrl}${userId}/teams/`);
+  }
+
+  readTokens(userId, params) {
+    return this.http.get(`${this.baseUrl}${userId}/tokens/`, {
+      params,
+    });
+  }
 }
 
 export default Users;

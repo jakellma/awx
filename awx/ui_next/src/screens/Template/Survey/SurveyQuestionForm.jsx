@@ -4,16 +4,21 @@ import { Formik, useField } from 'formik';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Form, FormGroup } from '@patternfly/react-core';
-import { FormColumnLayout } from '@components/FormLayout';
-import FormActionGroup from '@components/FormActionGroup/FormActionGroup';
+import { FormColumnLayout } from '../../../components/FormLayout';
+import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
 import FormField, {
   CheckboxField,
   PasswordField,
   FormSubmitError,
   FieldTooltip,
-} from '@components/FormField';
-import AnsibleSelect from '@components/AnsibleSelect';
-import { required, noWhiteSpace, combine, maxLength } from '@util/validators';
+} from '../../../components/FormField';
+import AnsibleSelect from '../../../components/AnsibleSelect';
+import {
+  required,
+  noWhiteSpace,
+  combine,
+  maxLength,
+} from '../../../util/validators';
 
 function AnswerTypeField({ i18n }) {
   const [field] = useField({
@@ -68,12 +73,15 @@ function SurveyQuestionForm({
 }) {
   const defaultIsNotAvailable = choices => {
     return defaultValue => {
-      if (!choices.includes(defaultValue)) {
-        return i18n._(
+      let errorMessage;
+      const found = [...defaultValue].every(dA => choices.indexOf(dA) > -1);
+
+      if (!found) {
+        errorMessage = i18n._(
           t`Default choice must be answered from the choices listed.`
         );
       }
-      return undefined;
+      return errorMessage;
     };
   };
 
@@ -127,7 +135,7 @@ function SurveyQuestionForm({
             <CheckboxField
               id="question-required"
               name="required"
-              label="Required"
+              label={i18n._(t`Required`)}
             />
           </FormColumnLayout>
           <FormColumnLayout>

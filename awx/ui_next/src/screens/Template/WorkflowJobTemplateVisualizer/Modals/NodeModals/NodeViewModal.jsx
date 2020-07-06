@@ -1,22 +1,22 @@
 import React, { useContext, useEffect, useCallback } from 'react';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
+import { Button, Modal } from '@patternfly/react-core';
 import {
   WorkflowDispatchContext,
   WorkflowStateContext,
-} from '@contexts/Workflow';
+} from '../../../../../contexts/Workflow';
 
-import { Button, Modal } from '@patternfly/react-core';
-import ContentError from '@components/ContentError';
-import ContentLoading from '@components/ContentLoading';
-import PromptDetail from '@components/PromptDetail';
-import useRequest from '@util/useRequest';
+import ContentError from '../../../../../components/ContentError';
+import ContentLoading from '../../../../../components/ContentLoading';
+import PromptDetail from '../../../../../components/PromptDetail';
+import useRequest from '../../../../../util/useRequest';
 import {
   InventorySourcesAPI,
   JobTemplatesAPI,
   ProjectsAPI,
   WorkflowJobTemplatesAPI,
-} from '@api';
+} from '../../../../../api';
 
 function getNodeType(node) {
   const ujtType = node.type || node.unified_job_type;
@@ -131,10 +131,10 @@ function NodeViewModal({ i18n }) {
 
   return (
     <Modal
-      isLarge
+      variant="large"
       isOpen
-      isFooterLeftAligned
       title={unifiedJobTemplate.name}
+      aria-label={i18n._(t`Workflow node view modal`)}
       onClose={() => dispatch({ type: 'SET_NODE_TO_VIEW', value: null })}
       actions={[
         <Button

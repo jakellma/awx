@@ -17,7 +17,6 @@ DOCUMENTATION = '''
 ---
 module: tower_workflow_job_template_node
 author: "John Westcott IV (@john-westcott-iv)"
-version_added: "2.3"
 short_description: create, update, or destroy Ansible Tower workflow job template nodes.
 description:
     - Create, update, or destroy Ansible Tower workflow job template nodes.
@@ -135,12 +134,6 @@ options:
       choices: ["present", "absent"]
       default: "present"
       type: str
-    tower_oauthtoken:
-      description:
-        - The Tower OAuth token to use.
-        - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
-      type: str
-      version_added: "3.7"
 extends_documentation_fragment: awx.awx.auth
 '''
 
@@ -231,7 +224,7 @@ def main():
 
     inventory = module.params.get('inventory')
     if inventory:
-        new_fields['inventory'] = module.resolve_name_to_id('inventory', inventory)
+        new_fields['inventory'] = module.resolve_name_to_id('inventories', inventory)
 
     # Create the data that gets sent for create and update
     for field_name in (

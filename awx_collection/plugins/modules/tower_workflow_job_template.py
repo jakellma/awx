@@ -17,7 +17,6 @@ DOCUMENTATION = '''
 ---
 module: tower_workflow_job_template
 author: "John Westcott IV (@john-westcott-iv)"
-version_added: "2.3"
 short_description: create, update, or destroy Ansible Tower workflow job templates.
 description:
     - Create, update, or destroy Ansible Tower workflow job templates.
@@ -107,12 +106,6 @@ options:
         - absent
       default: "present"
       type: str
-    tower_oauthtoken:
-      description:
-        - The Tower OAuth token to use.
-        - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
-      type: str
-      version_added: "3.7"
     notification_templates_started:
       description:
         - list of notifications to send on start
@@ -126,6 +119,11 @@ options:
     notification_templates_error:
       description:
         - list of notifications to send on error
+      type: list
+      elements: str
+    notification_templates_approvals:
+      description:
+        - list of notifications to send on start
       type: list
       elements: str
 extends_documentation_fragment: awx.awx.auth
@@ -173,6 +171,7 @@ def main():
         notification_templates_started=dict(type="list", elements='str'),
         notification_templates_success=dict(type="list", elements='str'),
         notification_templates_error=dict(type="list", elements='str'),
+        notification_templates_approvals=dict(type="list", elements='str'),
         state=dict(choices=['present', 'absent'], default='present'),
     )
 
@@ -241,6 +240,12 @@ def main():
         association_fields['notification_templates_error'] = []
         for item in notifications_error:
             association_fields['notification_templates_error'].append(module.resolve_name_to_id('notification_templates', item))
+
+    notifications_approval = module.params.get('notification_templates_approvals')
+    if notifications_approval is not None:
+        association_fields['notification_templates_approvals'] = []
+        for item in notifications_approval:
+            association_fields['notification_templates_approvals'].append(module.resolve_name_to_id('notification_templates', item))
 
     on_change = None
     new_spec = module.params.get('survey')

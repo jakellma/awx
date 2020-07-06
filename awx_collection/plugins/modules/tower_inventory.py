@@ -16,7 +16,6 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: tower_inventory
-version_added: "2.3"
 author: "Wayne Witzel III (@wwitzel3)"
 short_description: create, update, or destroy Ansible Tower inventory.
 description:
@@ -46,12 +45,10 @@ options:
         - The kind field. Cannot be modified after created.
       default: ""
       choices: ["", "smart"]
-      version_added: "2.7"
       type: str
     host_filter:
       description:
         -  The host_filter field. Only useful when C(kind=smart).
-      version_added: "2.7"
       type: str
     state:
       description:
@@ -59,12 +56,6 @@ options:
       default: "present"
       choices: ["present", "absent"]
       type: str
-    tower_oauthtoken:
-      description:
-        - The Tower OAuth token to use.
-        - If value not set, will try environment variable C(TOWER_OAUTH_TOKEN) and then config files
-      type: str
-      version_added: "3.7"
 extends_documentation_fragment: awx.awx.auth
 '''
 

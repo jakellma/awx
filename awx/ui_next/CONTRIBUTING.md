@@ -6,24 +6,34 @@ Have questions about this document or anything not covered here? Feel free to re
 
 ## Table of contents
 
-* [Things to know prior to submitting code](#things-to-know-prior-to-submitting-code)
-* [Setting up your development environment](#setting-up-your-development-environment)
-  * [Prerequisites](#prerequisites)
-    * [Node and npm](#node-and-npm)
-* [Build the user interface](#build-the-user-interface)
-* [Accessing the AWX web interface](#accessing-the-awx-web-interface)
-* [AWX REST API Interaction](#awx-rest-api-interaction)
-* [Handling API Errors](#handling-api-errors)
-* [Forms](#forms)
-* [Working with React](#working-with-react)
-  * [App structure](#app-structure)
-  * [Naming files](#naming-files)
-  * [Class constructors vs Class properties](#class-constructors-vs-class-properties)
-  * [Binding](#binding)
-  * [Typechecking with PropTypes](#typechecking-with-proptypes)
-  * [Naming Functions](#naming-functions)
-  * [Default State Initialization](#default-state-initialization)
-* [Internationalization](#internationalization)
+- [Ansible AWX UI With PatternFly](#ansible-awx-ui-with-patternfly)
+  - [Table of contents](#table-of-contents)
+  - [Things to know prior to submitting code](#things-to-know-prior-to-submitting-code)
+  - [Setting up your development environment](#setting-up-your-development-environment)
+    - [Prerequisites](#prerequisites)
+      - [Node and npm](#node-and-npm)
+      - [Build the User Interface](#build-the-user-interface)
+  - [Accessing the AWX web interface](#accessing-the-awx-web-interface)
+  - [AWX REST API Interaction](#awx-rest-api-interaction)
+  - [Handling API Errors](#handling-api-errors)
+  - [Forms](#forms)
+  - [Working with React](#working-with-react)
+    - [App structure](#app-structure)
+    - [Patterns](#patterns)
+      - [Bootstrapping the application (root src/ files)](#bootstrapping-the-application-root-src-files)
+    - [Naming files](#naming-files)
+      - [Naming components that use the context api](#naming-components-that-use-the-context-api)
+    - [Class constructors vs Class properties](#class-constructors-vs-class-properties)
+    - [Binding](#binding)
+    - [Typechecking with PropTypes](#typechecking-with-proptypes)
+    - [Custom Hooks](#custom-hooks)
+    - [Naming Functions](#naming-functions)
+    - [Default State Initialization](#default-state-initialization)
+    - [Testing components that use contexts](#testing-components-that-use-contexts)
+  - [Internationalization](#internationalization)
+    - [Marking strings for translation and replacement in the UI](#marking-strings-for-translation-and-replacement-in-the-ui)
+    - [Setting up .po files to give to translation team](#setting-up-po-files-to-give-to-translation-team)
+    - [Marking an issue to be translated](#marking-an-issue-to-be-translated)
 
 
 ## Things to know prior to submitting code
@@ -35,6 +45,7 @@ Have questions about this document or anything not covered here? Feel free to re
   - functions should adopt camelCase
   - constructors/classes should adopt PascalCase
   - constants to be exported should adopt UPPERCASE
+- For strings, we adopt the `sentence capitalization` since it is a [Patternfly style guide](https://www.patternfly.org/v4/design-guidelines/content/grammar-and-terminology#capitalization).
 
 ## Setting up your development environment
 
@@ -142,6 +153,7 @@ Inside these folders, the internal structure is:
 - **/api** - All classes used to interact with API's are found here.  See [AWX REST API Interaction](#awx-rest-api-interaction) for more information.
 - **/components** - All generic components that are meant to be used in multiple contexts throughout awx.  Things like buttons, tabs go here.
 - **/contexts** - Components which utilize react's context api.
+- **/locales** - [Internationalization](#internationalization) config and source files.
 - **/screens** - Based on the various routes of awx.
   - **/shared** - Components that are meant to be used specifically by a particular route, but might be sharable across pages of that route. For example, a form component which is used on both add and edit screens.
 - **/util** - Stateless helper functions that aren't tied to react.
@@ -232,24 +244,33 @@ About.defaultProps = {
 };
 ```
 
+### Custom Hooks
+
+There are currently a few custom hooks:
+
+1. [useRequest](https://github.com/ansible/awx/blob/devel/awx/ui_next/src/util/useRequest.js#L21) encapsulates main actions related to requests.
+2. [useDismissableError](https://github.com/ansible/awx/blob/devel/awx/ui_next/src/util/useRequest.js#L71) provides controls for "dismissing" an error message.
+3. [useDeleteItems](https://github.com/ansible/awx/blob/devel/awx/ui_next/src/util/useRequest.js#L98) handles deletion of items from a paginated item list.
+4. [useSelected](https://github.com/ansible/awx/blob/devel/awx/ui_next/src/util/useSelected.jsx#L14) provides a way to read and update a selected list.
+
 ### Naming Functions
 Here are the guidelines for how to name functions.
 
-| Naming Convention   |      Description   |
-|----------|-------------|
-|`handle<x>`| Use for methods that process events |
-|`on<x>`| Use for component prop names |
-|`toggle<x>`| Use for methods that flip one value to the opposite value |
-|`show<x>`| Use for methods that always set a value to show or add an element |
-|`hide<x>`| Use for methods that always set a value to hide or remove an element |
-|`create<x>`| Use for methods that make API `POST` requests |
-|`read<x>`| Use for methods that make API `GET` requests |
-|`update<x>`| Use for methods that make API `PATCH` requests |
-|`destroy<x>`| Use for methods that make API `DESTROY` requests |
-|`replace<x>`| Use for methods that make API `PUT` requests |
-|`disassociate<x>`| Use for methods that pass `{ disassociate: true }` as a data param to an endpoint |
-|`associate<x>`| Use for methods that pass a resource id as a data param to an endpoint |
-|`can<x>`| Use for props dealing with RBAC to denote whether a user has access to something |
+| Naming Convention | Description                                                                       |
+| ----------------- | --------------------------------------------------------------------------------- |
+| `handle<x>`       | Use for methods that process events                                               |
+| `on<x>`           | Use for component prop names                                                      |
+| `toggle<x>`       | Use for methods that flip one value to the opposite value                         |
+| `show<x>`         | Use for methods that always set a value to show or add an element                 |
+| `hide<x>`         | Use for methods that always set a value to hide or remove an element              |
+| `create<x>`       | Use for methods that make API `POST` requests                                     |
+| `read<x>`         | Use for methods that make API `GET` requests                                      |
+| `update<x>`       | Use for methods that make API `PATCH` requests                                    |
+| `destroy<x>`      | Use for methods that make API `DESTROY` requests                                  |
+| `replace<x>`      | Use for methods that make API `PUT` requests                                      |
+| `disassociate<x>` | Use for methods that pass `{ disassociate: true }` as a data param to an endpoint |
+| `associate<x>`    | Use for methods that pass a resource id as a data param to an endpoint            |
+| `can<x>`          | Use for props dealing with RBAC to denote whether a user has access to something  |
 
 ### Default State Initialization
 When declaring empty initial states, prefer the following instead of leaving them undefined:
@@ -284,7 +305,7 @@ them is rendering properly.
 
 The object containing context values looks for five known contexts, identified by the keys `linguiPublisher`, `router`, `config`, `network`, and `dialog` — the latter three each referring to the contexts defined in `src/contexts`. You can pass `false` for any of these values, and the corresponding context will be omitted from your test. For example, this will mount your component without the dialog context:
 
-```
+```javascript
 mountWithContexts(<Organization />< {
   context: {
     dialog: false,
@@ -314,7 +335,13 @@ You can learn more about the ways lingui and its React helpers at [this link](ht
 ### Setting up .po files to give to translation team
 
 1) `npm run add-locale` to add the language that you want to translate to (we should only have to do this once and the commit to repo afaik).  Example: `npm run add-locale en es fr`  # Add English, Spanish and French locale
-2) `npm run extract-strings` to create .po files for each language specified.  The .po files will be placed in src/locales but this is configurable.
+2) `npm run extract-strings` to create .po files for each language specified.  The .po files will be placed in src/locales.
 3) Open up the .po file for the language you want to test and add some translations.  In production we would pass this .po file off to the translation team.
 4) Once you've edited your .po file (or we've gotten a .po file back from the translation team) run `npm run compile-strings`.  This command takes the .po files and turns them into a minified JSON object and can be seen in the `messages.js` file in each locale directory.  These files get loaded at the App root level (see: App.jsx).
 5) Change the language in your browser and reload the page.  You should see your specified translations in place of English strings.
+
+### Marking an issue to be translated
+
+1) Issues marked with `component:I10n` should not be closed after the issue was fixed.
+2) Remove the label `state:needs_devel`.
+3) Add the label `state:pending_translations`. At this point, the translations will be batch translated by a maintainer, creating relevant entries in the PO files. Then after those translations have been merged, the issue can be closed.

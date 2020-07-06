@@ -1,26 +1,30 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import 'styled-components/macro';
+import React, { useCallback, useEffect } from 'react';
 import { Link, useHistory, useLocation } from 'react-router-dom';
 import { RRule, rrulestr } from 'rrule';
 import styled from 'styled-components';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { Schedule } from '@types';
-import { Chip, ChipGroup, Title, Button } from '@patternfly/react-core';
-import AlertModal from '@components/AlertModal';
-import { CardBody, CardActionsRow } from '@components/Card';
-import ContentError from '@components/ContentError';
-import ContentLoading from '@components/ContentLoading';
-import CredentialChip from '@components/CredentialChip';
-import { DetailList, Detail, UserDateDetail } from '@components/DetailList';
-import { ScheduleOccurrences, ScheduleToggle } from '@components/Schedule';
-import { formatDateString } from '@util/dates';
-import useRequest from '@util/useRequest';
-import { SchedulesAPI } from '@api';
-import DeleteButton from '@components/DeleteButton';
-import ErrorDetail from '@components/ErrorDetail';
+import { Chip, Title, Button } from '@patternfly/react-core';
+import { Schedule } from '../../../types';
+import AlertModal from '../../AlertModal';
+import { CardBody, CardActionsRow } from '../../Card';
+import ContentError from '../../ContentError';
+import ContentLoading from '../../ContentLoading';
+import CredentialChip from '../../CredentialChip';
+import { DetailList, Detail, UserDateDetail } from '../../DetailList';
+import ScheduleOccurrences from '../ScheduleOccurrences';
+import ScheduleToggle from '../ScheduleToggle';
+import { formatDateString } from '../../../util/dates';
+import useRequest, { useDismissableError } from '../../../util/useRequest';
+import { SchedulesAPI } from '../../../api';
+import DeleteButton from '../../DeleteButton';
+import ErrorDetail from '../../ErrorDetail';
+import ChipGroup from '../../ChipGroup';
 
 const PromptTitle = styled(Title)`
   --pf-c-title--m-md--FontWeight: 700;
+  grid-column: 1 / -1;
 `;
 
 function ScheduleDetail({ schedule, i18n }) {
@@ -45,27 +49,27 @@ function ScheduleDetail({ schedule, i18n }) {
     timezone,
   } = schedule;
 
-  const [deletionError, setDeletionError] = useState(null);
-  const [hasContentLoading, setHasContentLoading] = useState(false);
   const history = useHistory();
   const { pathname } = useLocation();
   const pathRoot = pathname.substr(0, pathname.indexOf('schedules'));
 
-  const handleDelete = async () => {
-    setHasContentLoading(true);
-    try {
+  const {
+    request: deleteSchedule,
+    isLoading: isDeleteLoading,
+    error: deleteError,
+  } = useRequest(
+    useCallback(async () => {
       await SchedulesAPI.destroy(id);
       history.push(`${pathRoot}schedules`);
-    } catch (error) {
-      setDeletionError(error);
-    }
-    setHasContentLoading(false);
-  };
+    }, [id, history, pathRoot])
+  );
+
+  const { error, dismissError } = useDismissableError(deleteError);
 
   const {
     result: [credentials, preview],
     isLoading,
-    error,
+    error: readContentError,
     request: fetchCredentialsAndPreview,
   } = useRequest(
     useCallback(async () => {
@@ -99,12 +103,12 @@ function ScheduleDetail({ schedule, i18n }) {
     (job_tags && job_tags.length > 0) ||
     (skip_tags && skip_tags.length > 0);
 
-  if (isLoading || hasContentLoading) {
+  if (isLoading) {
     return <ContentLoading />;
   }
 
-  if (error) {
-    return <ContentError error={error} />;
+  if (readContentError) {
+    return <ContentError error={readContentError} />;
   }
 
   return (
@@ -137,7 +141,7 @@ function ScheduleDetail({ schedule, i18n }) {
         />
         {showPromptedFields && (
           <>
-            <PromptTitle size="md" css="grid-column: 1 / -1;">
+            <PromptTitle headingLevel="h2">
               {i18n._(t`Prompted Fields`)}
             </PromptTitle>
             <Detail label={i18n._(t`Job Type`)} value={job_type} />
@@ -173,7 +177,7 @@ function ScheduleDetail({ schedule, i18n }) {
                 fullWidth
                 label={i18n._(t`Credentials`)}
                 value={
-                  <ChipGroup numChips={5}>
+                  <ChipGroup numChips={5} totalChips={credentials.length}>
                     {credentials.map(c => (
                       <CredentialChip key={c.id} credential={c} isReadOnly />
                     ))}
@@ -186,7 +190,10 @@ function ScheduleDetail({ schedule, i18n }) {
                 fullWidth
                 label={i18n._(t`Job Tags`)}
                 value={
-                  <ChipGroup numChips={5}>
+                  <ChipGroup
+                    numChips={5}
+                    totalChips={job_tags.split(',').length}
+                  >
                     {job_tags.split(',').map(jobTag => (
                       <Chip key={jobTag} isReadOnly>
                         {jobTag}
@@ -201,7 +208,10 @@ function ScheduleDetail({ schedule, i18n }) {
                 fullWidth
                 label={i18n._(t`Skip Tags`)}
                 value={
-                  <ChipGroup numChips={5}>
+                  <ChipGroup
+                    numChips={5}
+                    totalChips={skip_tags.split(',').length}
+                  >
                     {skip_tags.split(',').map(skipTag => (
                       <Chip key={skipTag} isReadOnly>
                         {skipTag}
@@ -228,21 +238,22 @@ function ScheduleDetail({ schedule, i18n }) {
           <DeleteButton
             name={name}
             modalTitle={i18n._(t`Delete Schedule`)}
-            onConfirm={handleDelete}
+            onConfirm={deleteSchedule}
+            isDisabled={isDeleteLoading}
           >
             {i18n._(t`Delete`)}
           </DeleteButton>
         )}
       </CardActionsRow>
-      {deletionError && (
+      {error && (
         <AlertModal
-          isOpen={deletionError}
-          variant="danger"
+          isOpen={error}
+          variant="error"
           title={i18n._(t`Error!`)}
-          onClose={() => setDeletionError(null)}
+          onClose={dismissError}
         >
           {i18n._(t`Failed to delete schedule.`)}
-          <ErrorDetail error={deletionError} />
+          <ErrorDetail error={error} />
         </AlertModal>
       )}
     </CardBody>

@@ -4,18 +4,18 @@ import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Formik, useField } from 'formik';
 import { RRule } from 'rrule';
-import { Config } from '@contexts/Config';
 import { Form, FormGroup, Title } from '@patternfly/react-core';
-import { SchedulesAPI } from '@api';
-import AnsibleSelect from '@components/AnsibleSelect';
-import ContentError from '@components/ContentError';
-import ContentLoading from '@components/ContentLoading';
-import FormActionGroup from '@components/FormActionGroup/FormActionGroup';
-import FormField, { FormSubmitError } from '@components/FormField';
-import { FormColumnLayout, SubFormLayout } from '@components/FormLayout';
-import { dateToInputDateTime, formatDateStringUTC } from '@util/dates';
-import useRequest from '@util/useRequest';
-import { required } from '@util/validators';
+import { Config } from '../../../contexts/Config';
+import { SchedulesAPI } from '../../../api';
+import AnsibleSelect from '../../AnsibleSelect';
+import ContentError from '../../ContentError';
+import ContentLoading from '../../ContentLoading';
+import FormActionGroup from '../../FormActionGroup/FormActionGroup';
+import FormField, { FormSubmitError } from '../../FormField';
+import { FormColumnLayout, SubFormLayout } from '../../FormLayout';
+import { dateToInputDateTime, formatDateStringUTC } from '../../../util/dates';
+import useRequest from '../../../util/useRequest';
+import { required } from '../../../util/validators';
 import FrequencyDetailSubform from './FrequencyDetailSubform';
 
 const generateRunOnTheDay = (days = []) => {
@@ -104,7 +104,11 @@ function ScheduleFormFields({ i18n, zoneOptions }) {
         fieldId="schedule-start-datetime"
         helperTextInvalid={startDateTimeMeta.error}
         isRequired
-        isValid={!startDateTimeMeta.touched || !startDateTimeMeta.error}
+        validated={
+          !startDateTimeMeta.touched || !startDateTimeMeta.error
+            ? 'default'
+            : 'error'
+        }
         label={i18n._(t`Start date/time`)}
       >
         <input
@@ -120,7 +124,9 @@ function ScheduleFormFields({ i18n, zoneOptions }) {
         fieldId="schedule-timezone"
         helperTextInvalid={timezoneMeta.error}
         isRequired
-        isValid={!timezoneMeta.touched || !timezoneMeta.error}
+        validated={
+          !timezoneMeta.touched || !timezoneMeta.error ? 'default' : 'error'
+        }
         label={i18n._(t`Local time zone`)}
       >
         <AnsibleSelect
@@ -134,7 +140,9 @@ function ScheduleFormFields({ i18n, zoneOptions }) {
         fieldId="schedule-requency"
         helperTextInvalid={frequencyMeta.error}
         isRequired
-        isValid={!frequencyMeta.touched || !frequencyMeta.error}
+        validated={
+          !frequencyMeta.touched || !frequencyMeta.error ? 'default' : 'error'
+        }
         label={i18n._(t`Run frequency`)}
       >
         <AnsibleSelect
@@ -153,7 +161,9 @@ function ScheduleFormFields({ i18n, zoneOptions }) {
       </FormGroup>
       {frequency.value !== 'none' && (
         <SubFormLayout>
-          <Title size="md">{i18n._(t`Frequency Details`)}</Title>
+          <Title size="md" headingLevel="h4">
+            {i18n._(t`Frequency Details`)}
+          </Title>
           <FormColumnLayout>
             <FrequencyDetailSubform />
           </FormColumnLayout>

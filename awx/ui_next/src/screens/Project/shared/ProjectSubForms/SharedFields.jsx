@@ -2,14 +2,14 @@ import React from 'react';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { useField } from 'formik';
-import CredentialLookup from '@components/Lookup/CredentialLookup';
-import FormField, { CheckboxField } from '@components/FormField';
-import { required } from '@util/validators';
 import { FormGroup, Title } from '@patternfly/react-core';
+import CredentialLookup from '../../../../components/Lookup/CredentialLookup';
+import FormField, { CheckboxField } from '../../../../components/FormField';
+import { required } from '../../../../util/validators';
 import {
   FormCheckboxLayout,
   FormFullWidthLayout,
-} from '@components/FormLayout';
+} from '../../../../components/FormLayout';
 
 export const UrlFormField = withI18n()(({ i18n, tooltip }) => (
   <FormField
@@ -104,7 +104,9 @@ export const ScmTypeOptions = withI18n()(
 
       {scmUpdateOnLaunch && (
         <>
-          <Title size="md">{i18n._(t`Option Details`)}</Title>
+          <Title size="md" headingLevel="h4">
+            {i18n._(t`Option Details`)}
+          </Title>
           <FormField
             id="project-cache-timeout"
             name="scm_update_cache_timeout"

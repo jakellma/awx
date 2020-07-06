@@ -1,11 +1,12 @@
+import 'styled-components/macro';
 import React from 'react';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { useField } from 'formik';
-import { required } from '@util/validators';
-import AnsibleSelect from '@components/AnsibleSelect';
-import FormField, { FieldTooltip } from '@components/FormField';
 import { FormGroup, Alert } from '@patternfly/react-core';
+import { required } from '../../../../util/validators';
+import AnsibleSelect from '../../../../components/AnsibleSelect';
+import FormField, { FieldTooltip } from '../../../../components/FormField';
 import { BrandName } from '../../../../variables';
 
 // Setting BrandName to a variable here is necessary to get the jest tests
@@ -80,7 +81,7 @@ const ManualSubForm = ({
         fieldId="project-local-path"
         helperTextInvalid={pathMeta.error}
         isRequired
-        isValid={!pathMeta.touched || !pathMeta.error}
+        validated={!pathMeta.touched || !pathMeta.error ? 'default' : 'error'}
         label={i18n._(t`Playbook Directory`)}
       >
         <FieldTooltip

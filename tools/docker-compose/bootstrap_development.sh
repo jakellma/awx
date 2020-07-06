@@ -20,7 +20,6 @@ else
 fi
 
 make awx-link
-yes | cp -rf /awx_devel/tools/docker-compose/supervisor.conf /etc/supervisord.conf
 
 # AWX bootstrapping
 make version_file
@@ -29,3 +28,4 @@ make init
 
 mkdir -p /awx_devel/awx/public/static
 mkdir -p /awx_devel/awx/ui/static
+mkdir -p /awx_devel/awx/ui_next/build/static
