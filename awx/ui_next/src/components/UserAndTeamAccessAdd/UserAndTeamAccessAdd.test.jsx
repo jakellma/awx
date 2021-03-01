@@ -43,29 +43,41 @@ describe('<UserAndTeamAccessAdd/>', () => {
       count: 1,
     },
   };
+  const options = {
+    data: {
+      actions: {
+        GET: {},
+        POST: {},
+      },
+      related_search_fields: [],
+    },
+  };
   let wrapper;
   beforeEach(async () => {
     await act(async () => {
       wrapper = mountWithContexts(
         <UserAndTeamAccessAdd
           apiModel={UsersAPI}
-          isOpen
-          onSave={() => {}}
-          onClose={() => {}}
+          onFetchData={() => {}}
           title="Add user permissions"
         />
       );
     });
-    await waitForElement(wrapper, 'PFWizard');
+    await waitForElement(wrapper, 'Button[aria-label="Add"]');
   });
   afterEach(() => {
     wrapper.unmount();
     jest.clearAllMocks();
   });
   test('should mount properly', async () => {
+    expect(wrapper.find('Button[aria-label="Add"]').length).toBe(1);
+    act(() => wrapper.find('Button[aria-label="Add"]').prop('onClick')());
+    wrapper.update();
     expect(wrapper.find('PFWizard').length).toBe(1);
   });
   test('should disable steps', async () => {
+    act(() => wrapper.find('Button[aria-label="Add"]').prop('onClick')());
+    wrapper.update();
     expect(wrapper.find('Button[type="submit"]').prop('isDisabled')).toBe(true);
     expect(
       wrapper
@@ -82,7 +94,9 @@ describe('<UserAndTeamAccessAdd/>', () => {
         fetchItems: JobTemplatesAPI.read,
         label: 'Job template',
         selectedResource: 'jobTemplate',
-        searchColumns: [{ name: 'Name', key: 'name', isDefault: true }],
+        searchColumns: [
+          { name: 'Name', key: 'name__icontains', isDefault: true },
+        ],
         sortColumns: [{ name: 'Name', key: 'name' }],
       })
     );
@@ -109,14 +123,19 @@ describe('<UserAndTeamAccessAdd/>', () => {
 
   test('should call api to associate role', async () => {
     JobTemplatesAPI.read.mockResolvedValue(resources);
+    JobTemplatesAPI.readOptions.mockResolvedValue(options);
     UsersAPI.associateRole.mockResolvedValue({});
-
+    act(() => wrapper.find('Button[aria-label="Add"]').prop('onClick')());
+    wrapper.update();
     await act(async () =>
       wrapper.find('SelectableCard[label="Job templates"]').prop('onClick')({
         fetchItems: JobTemplatesAPI.read,
+        fetchOptions: JobTemplatesAPI.readOptions,
         label: 'Job template',
         selectedResource: 'jobTemplate',
-        searchColumns: [{ name: 'Name', key: 'name', isDefault: true }],
+        searchColumns: [
+          { name: 'Name', key: 'name__icontains', isDefault: true },
+        ],
         sortColumns: [{ name: 'Name', key: 'name' }],
       })
     );
@@ -163,8 +182,17 @@ describe('<UserAndTeamAccessAdd/>', () => {
     await expect(UsersAPI.associateRole).toHaveBeenCalled();
   });
 
+  test('should close wizard', async () => {
+    act(() => wrapper.find('Button[aria-label="Add"]').prop('onClick')());
+    wrapper.update();
+    act(() => wrapper.find('PFWizard').prop('onClose')());
+    wrapper.update();
+    expect(wrapper.find('PFWizard').length).toBe(0);
+  });
+
   test('should throw error', async () => {
     JobTemplatesAPI.read.mockResolvedValue(resources);
+    JobTemplatesAPI.readOptions.mockResolvedValue(options);
     UsersAPI.associateRole.mockRejectedValue(
       new Error({
         response: {
@@ -185,12 +213,18 @@ describe('<UserAndTeamAccessAdd/>', () => {
       }),
     }));
 
+    act(() => wrapper.find('Button[aria-label="Add"]').prop('onClick')());
+    wrapper.update();
+
     await act(async () =>
       wrapper.find('SelectableCard[label="Job templates"]').prop('onClick')({
         fetchItems: JobTemplatesAPI.read,
+        fetchOptions: JobTemplatesAPI.readOptions,
         label: 'Job template',
         selectedResource: 'jobTemplate',
-        searchColumns: [{ name: 'Name', key: 'name', isDefault: true }],
+        searchColumns: [
+          { name: 'Name', key: 'name__icontains', isDefault: true },
+        ],
         sortColumns: [{ name: 'Name', key: 'name' }],
       })
     );

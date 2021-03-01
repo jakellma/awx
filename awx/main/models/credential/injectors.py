@@ -82,6 +82,7 @@ def _openstack_data(cred):
     if cred.has_input('domain'):
         openstack_auth['domain_name'] = cred.get_input('domain', default='')
     verify_state = cred.get_input('verify_ssl', default=True)
+
     openstack_data = {
         'clouds': {
             'devstack': {
@@ -90,6 +91,10 @@ def _openstack_data(cred):
             },
         },
     }
+
+    if cred.has_input('region'):
+        openstack_data['clouds']['devstack']['region_name'] = cred.get_input('region', default='')
+
     return openstack_data
 
 

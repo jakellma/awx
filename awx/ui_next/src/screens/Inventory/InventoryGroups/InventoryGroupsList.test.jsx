@@ -10,7 +10,12 @@ import { InventoriesAPI, GroupsAPI } from '../../../api';
 import InventoryGroupsList from './InventoryGroupsList';
 
 jest.mock('../../../api');
-
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useParams: () => ({
+    id: 1,
+  }),
+}));
 const mockGroups = [
   {
     id: 1,
@@ -88,6 +93,10 @@ describe('<InventoryGroupsList />', () => {
     });
     await waitForElement(wrapper, 'ContentLoading', el => el.length === 0);
   });
+  afterEach(() => {
+    jest.clearAllMocks();
+    wrapper.unmount();
+  });
 
   test('initially renders successfully', () => {
     expect(wrapper.find('InventoryGroupsList').length).toBe(1);
@@ -143,42 +152,24 @@ describe('<InventoryGroupsList />', () => {
       expect(el.props().checked).toBe(false);
     });
   });
-
-  test('should show content error when api throws error on initial render', async () => {
-    InventoriesAPI.readGroupsOptions.mockImplementation(() =>
-      Promise.reject(new Error())
-    );
-    await act(async () => {
-      wrapper = mountWithContexts(<InventoryGroupsList />);
+});
+describe('<InventoryGroupsList/> error handling', () => {
+  let wrapper;
+  beforeEach(() => {
+    InventoriesAPI.readGroups.mockResolvedValue({
+      data: {
+        count: mockGroups.length,
+        results: mockGroups,
+      },
     });
-    await waitForElement(wrapper, 'ContentError', el => el.length === 1);
-  });
-
-  test('should show content error if groups are not successfully fetched from api', async () => {
-    InventoriesAPI.readGroups.mockImplementation(() =>
-      Promise.reject(new Error())
-    );
-    await act(async () => {
-      wrapper.find('DataListCheck[id="select-group-1"]').invoke('onChange')();
+    InventoriesAPI.readGroupsOptions.mockResolvedValue({
+      data: {
+        actions: {
+          GET: {},
+          POST: {},
+        },
+      },
     });
-    wrapper.update();
-    await act(async () => {
-      wrapper.find('Toolbar Button[aria-label="Delete"]').invoke('onClick')();
-    });
-    await waitForElement(
-      wrapper,
-      'InventoryGroupsDeleteModal',
-      el => el.props().isModalOpen === true
-    );
-    await act(async () => {
-      wrapper
-        .find('ModalBoxFooter Button[aria-label="Delete"]')
-        .invoke('onClick')();
-    });
-    await waitForElement(wrapper, 'ContentError', el => el.length === 1);
-  });
-
-  test('should show error modal when group is not successfully deleted from api', async () => {
     GroupsAPI.destroy.mockRejectedValue(
       new Error({
         response: {
@@ -190,6 +181,37 @@ describe('<InventoryGroupsList />', () => {
         },
       })
     );
+  });
+  afterEach(() => {
+    jest.clearAllMocks();
+    wrapper.unmount();
+  });
+  test('should show content error when api throws error on initial render', async () => {
+    InventoriesAPI.readGroupsOptions.mockImplementationOnce(() =>
+      Promise.reject(new Error())
+    );
+    await act(async () => {
+      wrapper = mountWithContexts(<InventoryGroupsList />);
+    });
+    await waitForElement(wrapper, 'ContentError', el => el.length > 0);
+  });
+
+  test('should show content error if groups are not successfully fetched from api', async () => {
+    InventoriesAPI.readGroups.mockImplementation(() =>
+      Promise.reject(new Error())
+    );
+    await act(async () => {
+      wrapper = mountWithContexts(<InventoryGroupsList />);
+    });
+    await waitForElement(wrapper, 'ContentError', el => el.length > 0);
+  });
+
+  test('should show error modal when group is not successfully deleted from api', async () => {
+    await act(async () => {
+      wrapper = mountWithContexts(<InventoryGroupsList />);
+    });
+    waitForElement(wrapper, 'ContentEmpty', el => el.length === 0);
+
     await act(async () => {
       wrapper.find('DataListCheck[id="select-group-1"]').invoke('onChange')();
     });
@@ -208,16 +230,19 @@ describe('<InventoryGroupsList />', () => {
     wrapper.update();
     await act(async () => {
       wrapper
-        .find('ModalBoxFooter Button[aria-label="Delete"]')
+        .find('ModalBoxFooter Button[aria-label="Confirm Delete"]')
         .invoke('onClick')();
     });
     await waitForElement(
       wrapper,
-      'AlertModal[title="Error!"] Modal',
+      'AlertModal[aria-label="deletion error"] Modal',
       el => el.props().isOpen === true && el.props().title === 'Error!'
     );
+
     await act(async () => {
-      wrapper.find('ModalBoxCloseButton').invoke('onClose')();
+      wrapper
+        .find('AlertModal[aria-label="deletion error"]')
+        .invoke('onClose')();
     });
   });
 });

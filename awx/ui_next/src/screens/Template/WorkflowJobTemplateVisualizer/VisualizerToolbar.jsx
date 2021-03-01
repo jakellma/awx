@@ -18,7 +18,7 @@ import {
   WrenchIcon,
 } from '@patternfly/react-icons';
 import styled from 'styled-components';
-import LaunchButton from '../../../components/LaunchButton';
+import { LaunchButton } from '../../../components/LaunchButton';
 import {
   WorkflowDispatchContext,
   WorkflowStateContext,
@@ -56,14 +56,13 @@ function VisualizerToolbar({
   onSave,
   template,
   hasUnsavedChanges,
+  readOnly,
 }) {
   const dispatch = useContext(WorkflowDispatchContext);
 
   const { nodes, showLegend, showTools } = useContext(WorkflowStateContext);
 
   const totalNodes = nodes.reduce((n, node) => n + !node.isDeleted, 0) - 1;
-  const canLaunch =
-    template.summary_fields?.user_capabilities?.start && !hasUnsavedChanges;
 
   return (
     <div id="visualizer-toolbar">
@@ -80,8 +79,9 @@ function VisualizerToolbar({
           <Badge id="visualizer-total-nodes-badge" isRead>
             {totalNodes}
           </Badge>
-          <Tooltip content={i18n._(t`Toggle Legend`)} position="bottom">
+          <Tooltip content={i18n._(t`Toggle legend`)} position="bottom">
             <ActionButton
+              aria-label={i18n._(t`Toggle legend`)}
               id="visualizer-toggle-legend"
               isActive={totalNodes > 0 && showLegend}
               isDisabled={totalNodes === 0}
@@ -91,8 +91,9 @@ function VisualizerToolbar({
               <CompassIcon />
             </ActionButton>
           </Tooltip>
-          <Tooltip content={i18n._(t`Toggle Tools`)} position="bottom">
+          <Tooltip content={i18n._(t`Toggle tools`)} position="bottom">
             <ActionButton
+              aria-label={i18n._(t`Toggle tools`)}
               id="visualizer-toggle-tools"
               isActive={totalNodes > 0 && showTools}
               isDisabled={totalNodes === 0}
@@ -102,53 +103,69 @@ function VisualizerToolbar({
               <WrenchIcon />
             </ActionButton>
           </Tooltip>
-          <ActionButton
-            aria-label={i18n._(t`Workflow Documentation`)}
-            id="visualizer-documentation"
-            variant="plain"
-            component="a"
-            target="_blank"
-            href={DOCLINK}
+          <Tooltip
+            content={i18n._(t`Workflow documentation`)}
+            position="bottom"
           >
-            <BookIcon />
-          </ActionButton>
-          <LaunchButton resource={template} aria-label={i18n._(t`Launch`)}>
-            {({ handleLaunch }) => (
-              <ActionButton
-                id="visualizer-launch"
-                variant="plain"
-                isDisabled={!canLaunch || totalNodes === 0}
-                onClick={handleLaunch}
-              >
-                <RocketIcon />
-              </ActionButton>
-            )}
-          </LaunchButton>
-          <Tooltip content={i18n._(t`Delete All Nodes`)} position="bottom">
             <ActionButton
-              id="visualizer-delete-all"
-              aria-label={i18n._(t`Delete all nodes`)}
-              isDisabled={totalNodes === 0}
-              onClick={() =>
-                dispatch({
-                  type: 'SET_SHOW_DELETE_ALL_NODES_MODAL',
-                  value: true,
-                })
-              }
+              aria-label={i18n._(t`Workflow documentation`)}
+              id="visualizer-documentation"
               variant="plain"
+              component="a"
+              target="_blank"
+              href={DOCLINK}
             >
-              <TrashAltIcon />
+              <BookIcon />
             </ActionButton>
           </Tooltip>
-          <Button
-            id="visualizer-save"
-            css="margin: 0 32px"
-            aria-label={i18n._(t`Save`)}
-            variant="primary"
-            onClick={onSave}
-          >
-            {i18n._(t`Save`)}
-          </Button>
+          {template.summary_fields?.user_capabilities?.start && (
+            <Tooltip content={i18n._(t`Launch workflow`)} position="bottom">
+              <LaunchButton
+                resource={template}
+                aria-label={i18n._(t`Launch workflow`)}
+              >
+                {({ handleLaunch }) => (
+                  <ActionButton
+                    id="visualizer-launch"
+                    variant="plain"
+                    isDisabled={hasUnsavedChanges || totalNodes === 0}
+                    onClick={handleLaunch}
+                  >
+                    <RocketIcon />
+                  </ActionButton>
+                )}
+              </LaunchButton>
+            </Tooltip>
+          )}
+          {!readOnly && (
+            <>
+              <Tooltip content={i18n._(t`Delete all nodes`)} position="bottom">
+                <ActionButton
+                  id="visualizer-delete-all"
+                  aria-label={i18n._(t`Delete all nodes`)}
+                  isDisabled={totalNodes === 0}
+                  onClick={() =>
+                    dispatch({
+                      type: 'SET_SHOW_DELETE_ALL_NODES_MODAL',
+                      value: true,
+                    })
+                  }
+                  variant="plain"
+                >
+                  <TrashAltIcon />
+                </ActionButton>
+              </Tooltip>
+              <Button
+                id="visualizer-save"
+                css="margin: 0 32px"
+                aria-label={i18n._(t`Save`)}
+                variant="primary"
+                onClick={onSave}
+              >
+                {i18n._(t`Save`)}
+              </Button>
+            </>
+          )}
           <Button
             id="visualizer-close"
             aria-label={i18n._(t`Close`)}
@@ -168,6 +185,7 @@ VisualizerToolbar.propTypes = {
   onSave: func.isRequired,
   template: shape().isRequired,
   hasUnsavedChanges: bool.isRequired,
+  readOnly: bool.isRequired,
 };
 
 export default withI18n()(VisualizerToolbar);

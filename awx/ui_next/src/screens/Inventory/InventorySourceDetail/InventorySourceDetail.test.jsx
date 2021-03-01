@@ -23,11 +23,9 @@ InventorySourcesAPI.readOptions.mockResolvedValue({
             ['azure_rm', 'Microsoft Azure Resource Manager'],
             ['vmware', 'VMware vCenter'],
             ['satellite6', 'Red Hat Satellite 6'],
-            ['cloudforms', 'Red Hat CloudForms'],
             ['openstack', 'OpenStack'],
             ['rhv', 'Red Hat Virtualization'],
             ['tower', 'Ansible Tower'],
-            ['custom', 'Custom Script'],
           ],
         },
       },
@@ -60,38 +58,11 @@ describe('InventorySourceDetail', () => {
     assertDetail(wrapper, 'Description', 'mock description');
     assertDetail(wrapper, 'Source', 'Sourced from a Project');
     assertDetail(wrapper, 'Organization', 'Mock Org');
-    assertDetail(wrapper, 'Ansible environment', '/venv/custom');
+    assertDetail(wrapper, 'Ansible environment', '/var/lib/awx/venv/custom');
     assertDetail(wrapper, 'Project', 'Mock Project');
     assertDetail(wrapper, 'Inventory file', 'foo');
-    assertDetail(wrapper, 'Custom inventory script', 'Mock Script');
     assertDetail(wrapper, 'Verbosity', '2 (Debug)');
     assertDetail(wrapper, 'Cache timeout', '2 seconds');
-    expect(
-      wrapper
-        .find('Detail[label="Regions"]')
-        .containsAllMatchingElements([
-          <span>us-east-1</span>,
-          <span>us-east-2</span>,
-        ])
-    ).toEqual(true);
-    expect(
-      wrapper
-        .find('Detail[label="Instance filters"]')
-        .containsAllMatchingElements([
-          <span>filter1</span>,
-          <span>filter2</span>,
-          <span>filter3</span>,
-        ])
-    ).toEqual(true);
-    expect(
-      wrapper
-        .find('Detail[label="Only group by"]')
-        .containsAllMatchingElements([
-          <span>group1</span>,
-          <span>group2</span>,
-          <span>group3</span>,
-        ])
-    ).toEqual(true);
     expect(wrapper.find('CredentialChip').text()).toBe('Cloud: mock cred');
     expect(wrapper.find('VariablesDetail').prop('value')).toEqual(
       '---\nfoo: bar'

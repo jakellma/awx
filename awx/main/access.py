@@ -333,14 +333,14 @@ class BaseAccess(object):
             report_violation(_("License has expired."))
 
         free_instances = validation_info.get('free_instances', 0)
-        available_instances = validation_info.get('available_instances', 0)
+        instance_count = validation_info.get('instance_count', 0)
 
         if add_host_name:
             host_exists = Host.objects.filter(name=add_host_name).exists()
             if not host_exists and free_instances == 0:
-                report_violation(_("License count of %s instances has been reached.") % available_instances)
+                report_violation(_("License count of %s instances has been reached.") % instance_count)
             elif not host_exists and free_instances < 0:
-                report_violation(_("License count of %s instances has been exceeded.") % available_instances)
+                report_violation(_("License count of %s instances has been exceeded.") % instance_count)
         elif not add_host_name and free_instances < 0:
             report_violation(_("Host count exceeds available instances."))
 
@@ -1103,11 +1103,6 @@ class CredentialTypeAccess(BaseAccess):
     def can_use(self, obj):
         return True
 
-    def get_method_capability(self, method, obj, parent_obj):
-        if obj.managed_by_tower:
-            return False
-        return super(CredentialTypeAccess, self).get_method_capability(method, obj, parent_obj)
-
     def filtered_queryset(self):
         return self.model.objects.all()
 
@@ -1182,6 +1177,8 @@ class CredentialAccess(BaseAccess):
     def get_user_capabilities(self, obj, **kwargs):
         user_capabilities = super(CredentialAccess, self).get_user_capabilities(obj, **kwargs)
         user_capabilities['use'] = self.can_use(obj)
+        if getattr(obj, 'managed_by_tower', False) is True:
+            user_capabilities['edit'] = user_capabilities['delete'] = False
         return user_capabilities
 
 
@@ -2479,13 +2476,16 @@ class NotificationAccess(BaseAccess):
 
 class LabelAccess(BaseAccess):
     '''
-    I can see/use a Label if I have permission to associated organization
+    I can see/use a Label if I have permission to associated organization, or to a JT that the label is on
     '''
     model = Label
     prefetch_related = ('modified_by', 'created_by', 'organization',)
 
     def filtered_queryset(self):
-        return self.model.objects.all()
+        return self.model.objects.filter(
+            Q(organization__in=Organization.accessible_pk_qs(self.user, 'read_role')) |
+            Q(unifiedjobtemplate_labels__in=UnifiedJobTemplate.accessible_pk_qs(self.user, 'read_role'))
+        )
 
     @check_superuser
     def can_add(self, data):
@@ -2749,6 +2749,9 @@ class WorkflowApprovalTemplateAccess(BaseAccess):
             return False
         else:
             return (self.check_related('workflow_approval_template', UnifiedJobTemplate, role_field='admin_role'))
+
+    def can_change(self, obj, data):
+        return self.user.can_access(WorkflowJobTemplate, 'change', obj.workflow_job_template, data={})
 
     def can_start(self, obj, validate_license=False):
         # for copying WFJTs that contain approval nodes

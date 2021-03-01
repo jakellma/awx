@@ -1,25 +1,32 @@
-import React from 'react';
-import { useField } from 'formik';
+import React, { useCallback } from 'react';
+import { useField, useFormikContext } from 'formik';
 import { withI18n } from '@lingui/react';
-import { t } from '@lingui/macro';
+import { t, Trans } from '@lingui/macro';
 import CredentialLookup from '../../../../components/Lookup/CredentialLookup';
 import {
-  GroupByField,
-  InstanceFiltersField,
   OptionsField,
-  RegionsField,
   SourceVarsField,
   VerbosityField,
+  EnabledVarField,
+  EnabledValueField,
+  HostFilterField,
 } from './SharedFields';
 
-const EC2SubForm = ({ i18n, sourceOptions }) => {
-  const [credentialField, , credentialHelpers] = useField('credential');
-  const groupByOptionsObj = Object.assign(
-    {},
-    ...sourceOptions?.actions?.POST?.group_by?.ec2_group_by_choices.map(
-      ([key, val]) => ({ [key]: val })
-    )
+const EC2SubForm = ({ i18n }) => {
+  const { setFieldValue } = useFormikContext();
+  const [credentialField] = useField('credential');
+
+  const handleCredentialUpdate = useCallback(
+    value => {
+      setFieldValue('credential', value);
+    },
+    [setFieldValue]
   );
+
+  const pluginLink =
+    'http://docs.ansible.com/ansible-tower/latest/html/userguide/inventories.html#inventory-plugins';
+  const configLink =
+    'https://docs.ansible.com/ansible/latest/collections/amazon/aws/aws_ec2_inventory.html';
 
   return (
     <>
@@ -27,20 +34,33 @@ const EC2SubForm = ({ i18n, sourceOptions }) => {
         credentialTypeNamespace="aws"
         label={i18n._(t`Credential`)}
         value={credentialField.value}
-        onChange={value => {
-          credentialHelpers.setValue(value);
-        }}
+        onChange={handleCredentialUpdate}
       />
-      <RegionsField
-        regionOptions={
-          sourceOptions?.actions?.POST?.source_regions?.ec2_region_choices
+      <VerbosityField />
+      <HostFilterField />
+      <EnabledVarField />
+      <EnabledValueField />
+      <OptionsField />
+      <SourceVarsField
+        popoverContent={
+          <>
+            <Trans>
+              Enter variables to configure the inventory source. For a detailed
+              description of how to configure this plugin, see{' '}
+              <a href={pluginLink} target="_blank" rel="noopener noreferrer">
+                Inventory Plugins
+              </a>{' '}
+              in the documentation and the{' '}
+              <a href={configLink} target="_blank" rel="noopener noreferrer">
+                aws_ec2
+              </a>{' '}
+              plugin configuration guide.
+            </Trans>
+            <br />
+            <br />
+          </>
         }
       />
-      <InstanceFiltersField />
-      <GroupByField fixedOptions={groupByOptionsObj} />
-      <VerbosityField />
-      <OptionsField />
-      <SourceVarsField />
     </>
   );
 };

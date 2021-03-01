@@ -1,14 +1,36 @@
-import React from 'react';
-import { useField } from 'formik';
+import React, { useCallback } from 'react';
+import { useField, useFormikContext } from 'formik';
 import { withI18n } from '@lingui/react';
-import { t } from '@lingui/macro';
+import { t, Trans } from '@lingui/macro';
 import CredentialLookup from '../../../../components/Lookup/CredentialLookup';
-import { OptionsField, SourceVarsField, VerbosityField } from './SharedFields';
+import {
+  OptionsField,
+  SourceVarsField,
+  VerbosityField,
+  EnabledVarField,
+  EnabledValueField,
+  HostFilterField,
+} from './SharedFields';
+import { required } from '../../../../util/validators';
 
-const OpenStackSubForm = ({ i18n }) => {
-  const [credentialField, credentialMeta, credentialHelpers] = useField(
-    'credential'
+const OpenStackSubForm = ({ autoPopulateCredential, i18n }) => {
+  const { setFieldValue } = useFormikContext();
+  const [credentialField, credentialMeta, credentialHelpers] = useField({
+    name: 'credential',
+    validate: required(i18n._(t`Select a value for this field`), i18n),
+  });
+
+  const handleCredentialUpdate = useCallback(
+    value => {
+      setFieldValue('credential', value);
+    },
+    [setFieldValue]
   );
+
+  const pluginLink =
+    'http://docs.ansible.com/ansible-tower/latest/html/userguide/inventories.html#inventory-plugins';
+  const configLink =
+    'https://docs.ansible.com/ansible/latest/collections/openstack/cloud/openstack_inventory.html';
 
   return (
     <>
@@ -18,15 +40,36 @@ const OpenStackSubForm = ({ i18n }) => {
         helperTextInvalid={credentialMeta.error}
         isValid={!credentialMeta.touched || !credentialMeta.error}
         onBlur={() => credentialHelpers.setTouched()}
-        onChange={value => {
-          credentialHelpers.setValue(value);
-        }}
+        onChange={handleCredentialUpdate}
         value={credentialField.value}
         required
+        autoPopulate={autoPopulateCredential}
       />
       <VerbosityField />
+      <HostFilterField />
+      <EnabledVarField />
+      <EnabledValueField />
       <OptionsField />
-      <SourceVarsField />
+      <SourceVarsField
+        popoverContent={
+          <>
+            <Trans>
+              Enter variables to configure the inventory source. For a detailed
+              description of how to configure this plugin, see{' '}
+              <a href={pluginLink} target="_blank" rel="noopener noreferrer">
+                Inventory Plugins
+              </a>{' '}
+              in the documentation and the{' '}
+              <a href={configLink} target="_blank" rel="noopener noreferrer">
+                openstack
+              </a>{' '}
+              plugin configuration guide.
+            </Trans>
+            <br />
+            <br />
+          </>
+        }
+      />
     </>
   );
 };

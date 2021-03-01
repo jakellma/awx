@@ -50,10 +50,23 @@ export function requiredEmail(i18n) {
     if (!value) {
       return i18n._(t`This field must not be blank`);
     }
-    if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,4}$/i.test(value)) {
-      return i18n._(t`Invalid email address`);
+
+    // This isn't a perfect validator. It's likely to let a few
+    // invalid (though unlikely) email addresses through.
+
+    // This is ok, because the server will always do strict validation for us.
+
+    const splitVals = value.split('@');
+
+    if (splitVals.length >= 2) {
+      if (splitVals[0] && splitVals[1]) {
+        // We get here if the string has an '@' that is enclosed by
+        // non-empty substrings
+        return undefined;
+      }
     }
-    return undefined;
+
+    return i18n._(t`Invalid email address`);
   };
 }
 
@@ -69,8 +82,40 @@ export function noWhiteSpace(i18n) {
 export function integer(i18n) {
   return value => {
     const str = String(value);
-    if (/[^0-9]/.test(str)) {
+    if (!Number.isInteger(value) && /[^0-9]/.test(str)) {
       return i18n._(t`This field must be an integer`);
+    }
+    return undefined;
+  };
+}
+
+export function number(i18n) {
+  return value => {
+    const str = String(value);
+    if (/^-?[0-9]*(\.[0-9]*)?$/.test(str)) {
+      return undefined;
+    }
+    // large number scientific notation (e.g. '1e+21')
+    if (/^-?[0-9]*e[+-][0-9]*$/.test(str)) {
+      return undefined;
+    }
+    return i18n._(t`This field must be a number`);
+  };
+}
+
+export function url(i18n) {
+  return value => {
+    if (!value) {
+      return undefined;
+    }
+    // URL regex from https://urlregex.com/
+    if (
+      // eslint-disable-next-line max-len
+      !/((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www\.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w\-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[.!/\\\w]*))?)/.test(
+        value
+      )
+    ) {
+      return i18n._(t`Please enter a valid URL`);
     }
     return undefined;
   };
@@ -84,6 +129,17 @@ export function combine(validators) {
       if (error) {
         return error;
       }
+    }
+    return undefined;
+  };
+}
+
+export function regExp(i18n) {
+  return value => {
+    try {
+      RegExp(value);
+    } catch {
+      return i18n._(t`This field must be a regular expression`);
     }
     return undefined;
   };

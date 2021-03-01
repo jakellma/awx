@@ -9,14 +9,14 @@ import {
   InputGroup,
   Button,
 } from '@patternfly/react-core';
-import { useField } from 'formik';
+import { useField, useFormikContext } from 'formik';
 import ContentError from '../../../components/ContentError';
 import ContentLoading from '../../../components/ContentLoading';
 import useRequest from '../../../util/useRequest';
 import { FormColumnLayout } from '../../../components/FormLayout';
 import { CredentialLookup } from '../../../components/Lookup';
 import AnsibleSelect from '../../../components/AnsibleSelect';
-import { FieldTooltip } from '../../../components/FormField';
+import Popover from '../../../components/Popover';
 import {
   JobTemplatesAPI,
   WorkflowJobTemplatesAPI,
@@ -24,10 +24,9 @@ import {
 } from '../../../api';
 
 function WebhookSubForm({ i18n, templateType }) {
+  const { setFieldValue } = useFormikContext();
   const { id } = useParams();
-
   const { pathname } = useLocation();
-
   const { origin } = document.location;
 
   const [
@@ -35,11 +34,7 @@ function WebhookSubForm({ i18n, templateType }) {
     webhookServiceMeta,
     webhookServiceHelpers,
   ] = useField('webhook_service');
-
-  // eslint-disable-next-line no-unused-vars
-  const [webhookUrlField, webhookUrlMeta, webhookUrlHelpers] = useField(
-    'webhook_url'
-  );
+  const [webhookUrlField, , webhookUrlHelpers] = useField('webhook_url');
   const [webhookKeyField, webhookKeyMeta, webhookKeyHelpers] = useField(
     'webhook_key'
   );
@@ -88,6 +83,14 @@ function WebhookSubForm({ i18n, templateType }) {
   const changeWebhookKey = async () => {
     await fetchWebhookKey();
   };
+
+  const onCredentialChange = useCallback(
+    value => {
+      setFieldValue('webhook_credential', value || null);
+    },
+    [setFieldValue]
+  );
+
   const isUpdateKeyDisabled =
     pathname.endsWith('/add') ||
     webhookKeyMeta.initialValue ===
@@ -126,8 +129,8 @@ function WebhookSubForm({ i18n, templateType }) {
         fieldId="webhook_service"
         helperTextInvalid={webhookServiceMeta.error}
         label={i18n._(t`Webhook Service`)}
+        labelIcon={<Popover content={i18n._(t`Select a webhook service.`)} />}
       >
-        <FieldTooltip content={i18n._(t`Select a webhook service.`)} />
         <AnsibleSelect
           {...webhookServiceField}
           id="webhook_service"
@@ -162,13 +165,15 @@ function WebhookSubForm({ i18n, templateType }) {
           type="text"
           fieldId="jt-webhookURL"
           label={i18n._(t`Webhook URL`)}
+          labelIcon={
+            <Popover
+              content={i18n._(
+                t`Webhook services can launch jobs with this workflow job template by making a POST request to this URL.`
+              )}
+            />
+          }
           name="webhook_url"
         >
-          <FieldTooltip
-            content={i18n._(
-              t`Webhook services can launch jobs with this workflow job template by making a POST request to this URL.`
-            )}
-          />
           <TextInput
             id="t-webhookURL"
             aria-label={i18n._(t`Webhook URL`)}
@@ -178,18 +183,20 @@ function WebhookSubForm({ i18n, templateType }) {
         </FormGroup>
         <FormGroup
           label={i18n._(t`Webhook Key`)}
+          labelIcon={
+            <Popover
+              content={i18n._(
+                t`Webhook services can use this as a shared secret.`
+              )}
+            />
+          }
           fieldId="template-webhook_key"
         >
-          <FieldTooltip
-            content={i18n._(
-              t`Webhook services can use this as a shared secret.`
-            )}
-          />
           <InputGroup>
             <TextInput
               id="template-webhook_key"
               isReadOnly
-              aria-label="wfjt-webhook-key"
+              aria-label={i18n._(t`workflow job template webhook key`)}
               value={webhookKeyField.value}
             />
             <Button
@@ -211,9 +218,7 @@ function WebhookSubForm({ i18n, templateType }) {
             t`Optionally select the credential to use to send status updates back to the webhook service.`
           )}
           credentialTypeId={credTypeId}
-          onChange={value => {
-            webhookCredentialHelpers.setValue(value || null);
-          }}
+          onChange={onCredentialChange}
           isValid={!webhookCredentialMeta.error}
           helperTextInvalid={webhookCredentialMeta.error}
           value={webhookCredentialField.value}

@@ -96,6 +96,10 @@ class Credential(PasswordFieldsModel, CommonModelNameNotUnique, ResourceMixin):
         help_text=_('Specify the type of credential you want to create. Refer '
                     'to the Ansible Tower documentation for details on each type.')
     )
+    managed_by_tower = models.BooleanField(
+        default=False,
+        editable=False
+    )
     organization = models.ForeignKey(
         'Organization',
         null=True,
@@ -331,6 +335,7 @@ class CredentialType(CommonModelNameNotUnique):
         ('insights', _('Insights')),
         ('external', _('External')),
         ('kubernetes', _('Kubernetes')),
+        ('galaxy', _('Galaxy/Automation Hub')),
     )
 
     kind = models.CharField(
@@ -815,6 +820,11 @@ ManagedCredentialType(
                                        'URLs. Refer to Ansible Tower documentation for '
                                        'common scenarios.')
         }, {
+            'id': 'region',
+            'label': ugettext_noop('Region Name'),
+            'type': 'string',
+            'help_text': ugettext_noop('For some cloud providers, like OVH, region must be specified'),
+        }, {
             'id': 'verify_ssl',
             'label': ugettext_noop('Verify SSL'),
             'type': 'boolean',
@@ -862,33 +872,6 @@ ManagedCredentialType(
             'type': 'string',
             'help_text': ugettext_noop('Enter the URL that corresponds to your Red Hat '
                                        'Satellite 6 server. For example, https://satellite.example.org')
-        }, {
-            'id': 'username',
-            'label': ugettext_noop('Username'),
-            'type': 'string'
-        }, {
-            'id': 'password',
-            'label': ugettext_noop('Password'),
-            'type': 'string',
-            'secret': True,
-        }],
-        'required': ['host', 'username', 'password'],
-    }
-)
-
-ManagedCredentialType(
-    namespace='cloudforms',
-    kind='cloud',
-    name=ugettext_noop('Red Hat CloudForms'),
-    managed_by_tower=True,
-    inputs={
-        'fields': [{
-            'id': 'host',
-            'label': ugettext_noop('CloudForms URL'),
-            'type': 'string',
-            'help_text': ugettext_noop('Enter the URL for the virtual machine that '
-                                       'corresponds to your CloudForms instance. '
-                                       'For example, https://cloudforms.example.org')
         }, {
             'id': 'username',
             'label': ugettext_noop('Username'),
@@ -1169,6 +1152,38 @@ ManagedCredentialType(
             'multiline': True,
         }],
         'required': ['host', 'bearer_token'],
+    }
+)
+
+
+ManagedCredentialType(
+    namespace='galaxy_api_token',
+    kind='galaxy',
+    name=ugettext_noop('Ansible Galaxy/Automation Hub API Token'),
+    inputs={
+        'fields': [{
+            'id': 'url',
+            'label': ugettext_noop('Galaxy Server URL'),
+            'type': 'string',
+            'help_text': ugettext_noop('The URL of the Galaxy instance to connect to.')
+        },{
+            'id': 'auth_url',
+            'label': ugettext_noop('Auth Server URL'),
+            'type': 'string',
+            'help_text': ugettext_noop(
+                'The URL of a Keycloak server token_endpoint, if using '
+                'SSO auth.'
+            )
+        },{
+            'id': 'token',
+            'label': ugettext_noop('API Token'),
+            'type': 'string',
+            'secret': True,
+            'help_text': ugettext_noop(
+                'A token to use for authentication against the Galaxy instance.'
+            )
+        }],
+        'required': ['url'],
     }
 )
 

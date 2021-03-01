@@ -54,6 +54,16 @@ class Users extends Base {
       params,
     });
   }
+
+  readAdminOfOrganizations(userId, params) {
+    return this.http.get(`${this.baseUrl}${userId}/admin_of_organizations/`, {
+      params,
+    });
+  }
+
+  readTokenOptions(userId) {
+    return this.http.options(`${this.baseUrl}${userId}/tokens/`);
+  }
 }
 
 export default Users;

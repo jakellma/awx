@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { t } from '@lingui/macro';
 import PropTypes, { shape } from 'prop-types';
 
 import { withI18n } from '@lingui/react';
-import { useField, withFormik } from 'formik';
+import { useField, useFormikContext, withFormik } from 'formik';
 import {
   Form,
   FormGroup,
@@ -14,10 +14,7 @@ import {
 import { required } from '../../../util/validators';
 
 import FieldWithPrompt from '../../../components/FieldWithPrompt';
-import FormField, {
-  FieldTooltip,
-  FormSubmitError,
-} from '../../../components/FormField';
+import FormField, { FormSubmitError } from '../../../components/FormField';
 import {
   FormColumnLayout,
   FormFullWidthLayout,
@@ -30,6 +27,7 @@ import { VariablesField } from '../../../components/CodeMirrorInput';
 import FormActionGroup from '../../../components/FormActionGroup';
 import ContentError from '../../../components/ContentError';
 import CheckboxField from '../../../components/FormField/CheckboxField';
+import Popover from '../../../components/Popover';
 import LabelSelect from './LabelSelect';
 import WebhookSubForm from './WebhookSubForm';
 import { WorkFlowJobTemplate } from '../../../types';
@@ -43,6 +41,7 @@ function WorkflowJobTemplateForm({
   i18n,
   submitError,
 }) {
+  const { setFieldValue } = useFormikContext();
   const [enableWebhooks, setEnableWebhooks] = useState(
     Boolean(template.webhook_service)
   );
@@ -53,10 +52,38 @@ function WorkflowJobTemplateForm({
   );
   const [labelsField, , labelsHelpers] = useField('labels');
   const [limitField, limitMeta, limitHelpers] = useField('limit');
-  const [organizationField, organizationMeta, organizationHelpers] = useField(
-    'organization'
-  );
+  const [organizationField, organizationMeta] = useField('organization');
   const [scmField, , scmHelpers] = useField('scm_branch');
+  const [, webhookServiceMeta, webhookServiceHelpers] = useField(
+    'webhook_service'
+  );
+  const [, webhookUrlMeta, webhookUrlHelpers] = useField('webhook_url');
+  const [, webhookKeyMeta, webhookKeyHelpers] = useField('webhook_key');
+  const [, webhookCredentialMeta, webhookCredentialHelpers] = useField(
+    'webhook_credential'
+  );
+
+  useEffect(() => {
+    if (enableWebhooks) {
+      webhookServiceHelpers.setValue(webhookServiceMeta.initialValue);
+      webhookUrlHelpers.setValue(webhookUrlMeta.initialValue);
+      webhookKeyHelpers.setValue(webhookKeyMeta.initialValue);
+      webhookCredentialHelpers.setValue(webhookCredentialMeta.initialValue);
+    } else {
+      webhookServiceHelpers.setValue('');
+      webhookUrlHelpers.setValue('');
+      webhookKeyHelpers.setValue('');
+      webhookCredentialHelpers.setValue(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableWebhooks]);
+
+  const onOrganizationChange = useCallback(
+    value => {
+      setFieldValue('organization', value);
+    },
+    [setFieldValue]
+  );
 
   if (hasContentError) {
     return <ContentError error={hasContentError} />;
@@ -81,29 +108,24 @@ function WorkflowJobTemplateForm({
         />
         <OrganizationLookup
           helperTextInvalid={organizationMeta.error}
-          onChange={value => {
-            organizationHelpers.setValue(value || null);
-          }}
+          onChange={onOrganizationChange}
           value={organizationField.value}
           isValid={!organizationMeta.error}
         />
-
-        <FieldWithPrompt
-          fieldId="wfjt-inventory"
-          label={i18n._(t`Inventory`)}
-          promptId="wfjt-ask-inventory-on-launch"
-          promptName="ask_inventory_on_launch"
-          tooltip={i18n._(
-            t`Select an inventory for the workflow. This inventory is applied to all job template nodes that prompt for an inventory.`
-          )}
-        >
+        <>
           <InventoryLookup
+            promptId="wfjt-ask-inventory-on-launch"
+            promptName="ask_inventory_on_launch"
+            tooltip={i18n._(
+              t`Select an inventory for the workflow. This inventory is applied to all job template nodes that prompt for an inventory.`
+            )}
+            fieldId="wfjt-inventory"
+            isPromptableField
             value={inventoryField.value}
             onBlur={() => inventoryHelpers.setTouched()}
             onChange={value => {
               inventoryHelpers.setValue(value);
             }}
-            required={askInventoryOnLaunchField.value}
             touched={inventoryMeta.touched}
             error={inventoryMeta.error}
           />
@@ -116,8 +138,7 @@ function WorkflowJobTemplateForm({
                 {inventoryMeta.error}
               </div>
             )}
-        </FieldWithPrompt>
-
+        </>
         <FieldWithPrompt
           fieldId="wjft-limit"
           label={i18n._(t`Limit`)}
@@ -131,7 +152,9 @@ function WorkflowJobTemplateForm({
           <TextInput
             id="text-wfjt-limit"
             {...limitField}
-            isValid={!limitMeta.touched || !limitMeta.error}
+            validated={
+              !limitMeta.touched || !limitMeta.error ? 'default' : 'error'
+            }
             onChange={value => {
               limitHelpers.setValue(value);
             }}
@@ -157,12 +180,17 @@ function WorkflowJobTemplateForm({
         </FieldWithPrompt>
       </FormColumnLayout>
       <FormFullWidthLayout>
-        <FormGroup label={i18n._(t`Labels`)} fieldId="template-labels">
-          <FieldTooltip
-            content={i18n._(t`Optional labels that describe this job template,
+        <FormGroup
+          label={i18n._(t`Labels`)}
+          labelIcon={
+            <Popover
+              content={i18n._(t`Optional labels that describe this job template,
                     such as 'dev' or 'test'. Labels can be used to group and filter
                     job templates and completed jobs.`)}
-          />
+            />
+          }
+          fieldId="template-labels"
+        >
           <LabelSelect
             value={labelsField.value}
             onChange={labels => labelsHelpers.setValue(labels)}
@@ -190,7 +218,7 @@ function WorkflowJobTemplateForm({
               <span>
                 {i18n._(t`Enable Webhook`)}
                 &nbsp;
-                <FieldTooltip
+                <Popover
                   content={i18n._(
                     t`Enable Webhook for this workflow job template.`
                   )}

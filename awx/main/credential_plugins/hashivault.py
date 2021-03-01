@@ -3,7 +3,7 @@ import os
 import pathlib
 from urllib.parse import urljoin
 
-from .plugin import CredentialPlugin, CertFiles
+from .plugin import CredentialPlugin, CertFiles, raise_for_status
 
 import requests
 from django.utils.translation import ugettext_lazy as _
@@ -40,6 +40,13 @@ base_inputs = {
         'multiline': False,
         'secret': True,
         'help_text': _('The Secret ID for AppRole Authentication')
+    }, {
+        'id': 'default_auth_path',
+        'label': _('Path to Approle Auth'),
+        'type': 'string',
+        'multiline': False,
+        'default': 'approle',
+        'help_text': _('The AppRole Authentication path to use if one isn\'t provided in the metadata when linking to an input field. Defaults to \'approle\'')
     }
     ],
     'metadata': [{
@@ -47,10 +54,11 @@ base_inputs = {
         'label': _('Path to Secret'),
         'type': 'string',
         'help_text': _('The path to the secret stored in the secret backend e.g, /some/secret/')
-    },{
+    }, {
         'id': 'auth_path',
         'label': _('Path to Auth'),
         'type': 'string',
+        'multiline': False,
         'help_text': _('The path where the Authentication method is mounted e.g, approle')
     }],
     'required': ['url', 'secret_path'],
@@ -118,7 +126,9 @@ def handle_auth(**kwargs):
 def approle_auth(**kwargs):
     role_id = kwargs['role_id']
     secret_id = kwargs['secret_id']
-    auth_path = kwargs.get('auth_path') or 'approle'
+    # we first try to use the 'auth_path' from the metadata
+    # if not found we try to fetch the 'default_auth_path' from inputs
+    auth_path = kwargs.get('auth_path') or kwargs['default_auth_path']
 
     url = urljoin(kwargs['url'], 'v1')
     cacert = kwargs.get('cacert', None)
@@ -145,11 +155,14 @@ def kv_backend(**kwargs):
     cacert = kwargs.get('cacert', None)
     api_version = kwargs['api_version']
 
-    request_kwargs = {'timeout': 30}
+    request_kwargs = {
+        'timeout': 30,
+        'allow_redirects': False,
+    }
 
     sess = requests.Session()
     sess.headers['Authorization'] = 'Bearer {}'.format(token)
-    # Compatability header for older installs of Hashicorp Vault
+    # Compatibility header for older installs of Hashicorp Vault
     sess.headers['X-Vault-Token'] = token
 
     if api_version == 'v2':
@@ -175,7 +188,7 @@ def kv_backend(**kwargs):
     with CertFiles(cacert) as cert:
         request_kwargs['verify'] = cert
         response = sess.get(request_url, **request_kwargs)
-    response.raise_for_status()
+    raise_for_status(response)
 
     json = response.json()
     if api_version == 'v2':
@@ -198,7 +211,10 @@ def ssh_backend(**kwargs):
     role = kwargs['role']
     cacert = kwargs.get('cacert', None)
 
-    request_kwargs = {'timeout': 30}
+    request_kwargs = {
+        'timeout': 30,
+        'allow_redirects': False,
+    }
 
     request_kwargs['json'] = {'public_key': kwargs['public_key']}
     if kwargs.get('valid_principals'):
@@ -215,7 +231,7 @@ def ssh_backend(**kwargs):
         request_kwargs['verify'] = cert
         resp = sess.post(request_url, **request_kwargs)
 
-    resp.raise_for_status()
+    raise_for_status(resp)
     return resp.json()['data']['signed_key']
 
 

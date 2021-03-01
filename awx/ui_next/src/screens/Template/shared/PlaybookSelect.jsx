@@ -1,12 +1,22 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { number, string, oneOfType } from 'prop-types';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import AnsibleSelect from '../../../components/AnsibleSelect';
+import { SelectVariant, Select, SelectOption } from '@patternfly/react-core';
 import { ProjectsAPI } from '../../../api';
 import useRequest from '../../../util/useRequest';
 
-function PlaybookSelect({ projectId, isValid, field, onBlur, onError, i18n }) {
+function PlaybookSelect({
+  projectId,
+  isValid,
+  selected,
+  onBlur,
+  onError,
+  onChange,
+  i18n,
+}) {
+  const [isDisabled, setIsDisabled] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const {
     result: options,
     request: fetchOptions,
@@ -18,21 +28,9 @@ function PlaybookSelect({ projectId, isValid, field, onBlur, onError, i18n }) {
         return [];
       }
       const { data } = await ProjectsAPI.readPlaybooks(projectId);
-      const opts = (data || []).map(playbook => ({
-        value: playbook,
-        key: playbook,
-        label: playbook,
-        isDisabled: false,
-      }));
 
-      opts.unshift({
-        value: '',
-        key: '',
-        label: i18n._(t`Choose a playbook`),
-        isDisabled: false,
-      });
-      return opts;
-    }, [projectId, i18n]),
+      return data;
+    }, [projectId]),
     []
   );
 
@@ -42,19 +40,35 @@ function PlaybookSelect({ projectId, isValid, field, onBlur, onError, i18n }) {
 
   useEffect(() => {
     if (error) {
-      onError(error);
+      if (error.response.status === 403) {
+        setIsDisabled(true);
+      } else {
+        onError(error);
+      }
     }
   }, [error, onError]);
 
   return (
-    <AnsibleSelect
+    <Select
+      ouiaId="JobTemplateForm-playbook"
+      isOpen={isOpen}
+      variant={SelectVariant.typeahead}
+      selections={selected}
+      onToggle={setIsOpen}
+      placeholderText={i18n._(t`Select a playbook`)}
+      isCreateable={false}
+      onSelect={(event, value) => {
+        onChange(value);
+      }}
       id="template-playbook"
-      data={options}
       isValid={isValid}
-      {...field}
       onBlur={onBlur}
-      isDisabled={isLoading}
-    />
+      isDisabled={isLoading || isDisabled}
+    >
+      {options.map(opt => (
+        <SelectOption key={opt} value={opt} />
+      ))}
+    </Select>
   );
 }
 PlaybookSelect.propTypes = {

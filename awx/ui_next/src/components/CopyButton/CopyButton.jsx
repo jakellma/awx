@@ -3,37 +3,45 @@ import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import PropTypes from 'prop-types';
 
-import { Button, Tooltip } from '@patternfly/react-core';
+import { Button } from '@patternfly/react-core';
 import { CopyIcon } from '@patternfly/react-icons';
 import useRequest, { useDismissableError } from '../../util/useRequest';
 import AlertModal from '../AlertModal';
 import ErrorDetail from '../ErrorDetail';
 
-function CopyButton({ i18n, copyItem, onLoading, onDoneLoading, helperText }) {
+function CopyButton({
+  id,
+  copyItem,
+  isDisabled,
+  onCopyStart,
+  onCopyFinish,
+  errorMessage,
+  i18n,
+}) {
   const { isLoading, error: copyError, request: copyItemToAPI } = useRequest(
     copyItem
   );
 
   useEffect(() => {
     if (isLoading) {
-      return onLoading();
+      return onCopyStart();
     }
-    return onDoneLoading();
-  }, [isLoading, onLoading, onDoneLoading]);
+    return onCopyFinish();
+  }, [isLoading, onCopyStart, onCopyFinish]);
 
   const { error, dismissError } = useDismissableError(copyError);
 
   return (
     <>
-      <Tooltip content={helperText.tooltip} position="top">
-        <Button
-          aria-label={i18n._(t`Copy`)}
-          variant="plain"
-          onClick={copyItemToAPI}
-        >
-          <CopyIcon />
-        </Button>
-      </Tooltip>
+      <Button
+        id={id}
+        isDisabled={isLoading || isDisabled}
+        aria-label={i18n._(t`Copy`)}
+        variant="plain"
+        onClick={copyItemToAPI}
+      >
+        <CopyIcon />
+      </Button>
       <AlertModal
         aria-label={i18n._(t`Copy Error`)}
         isOpen={error}
@@ -41,7 +49,7 @@ function CopyButton({ i18n, copyItem, onLoading, onDoneLoading, helperText }) {
         title={i18n._(t`Error!`)}
         onClose={dismissError}
       >
-        {helperText.errorMessage}
+        {errorMessage}
         <ErrorDetail error={error} />
       </AlertModal>
     </>
@@ -50,11 +58,14 @@ function CopyButton({ i18n, copyItem, onLoading, onDoneLoading, helperText }) {
 
 CopyButton.propTypes = {
   copyItem: PropTypes.func.isRequired,
-  onLoading: PropTypes.func.isRequired,
-  onDoneLoading: PropTypes.func.isRequired,
-  helperText: PropTypes.shape({
-    tooltip: PropTypes.string.isRequired,
-    errorMessage: PropTypes.string.isRequired,
-  }).isRequired,
+  onCopyStart: PropTypes.func.isRequired,
+  onCopyFinish: PropTypes.func.isRequired,
+  errorMessage: PropTypes.string.isRequired,
+  isDisabled: PropTypes.bool,
 };
+
+CopyButton.defaultProps = {
+  isDisabled: false,
+};
+
 export default withI18n()(CopyButton);

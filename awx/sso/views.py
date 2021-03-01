@@ -25,7 +25,7 @@ class BaseRedirectView(RedirectView):
     def get_redirect_url(self, *args, **kwargs):
         last_path = self.request.COOKIES.get('lastPath', '')
         last_path = urllib.parse.quote(urllib.parse.unquote(last_path).strip('"'))
-        url = reverse('ui:index')
+        url = reverse('ui_next:index')
         if last_path:
             return '%s#%s' % (url, last_path)
         else:
@@ -58,12 +58,12 @@ class MetadataView(View):
     def get(self, request, *args, **kwargs):
         from social_django.utils import load_backend, load_strategy
         complete_url = reverse('social:complete', args=('saml', ))
-        saml_backend = load_backend(
-            load_strategy(request),
-            'saml',
-            redirect_uri=complete_url,
-        )
         try:
+            saml_backend = load_backend(
+                load_strategy(request),
+                'saml',
+                redirect_uri=complete_url,
+            )
             metadata, errors = saml_backend.generate_metadata_xml()
         except Exception as e:
             logger.exception('unable to generate SAML metadata')

@@ -4,7 +4,11 @@ import {
   maxLength,
   noWhiteSpace,
   integer,
+  number,
+  url,
   combine,
+  regExp,
+  requiredEmail,
 } from './validators';
 
 const i18n = { _: val => val };
@@ -110,6 +114,53 @@ describe('validators', () => {
     });
   });
 
+  test('number should accept number (number)', () => {
+    expect(number(i18n)(13)).toBeUndefined();
+  });
+
+  test('number should accept number (string)', () => {
+    expect(number(i18n)('13')).toBeUndefined();
+  });
+
+  test('number should accept negative number', () => {
+    expect(number(i18n)(-14)).toBeUndefined();
+  });
+
+  test('number should accept decimal/float', () => {
+    expect(number(i18n)(13.1)).toBeUndefined();
+  });
+
+  test('number should accept large number', () => {
+    expect(number(i18n)(999999999999999999999.9)).toBeUndefined();
+    expect(number(i18n)(-999999999999999999999.9)).toBeUndefined();
+  });
+
+  test('number should reject string containing alphanum', () => {
+    expect(number(i18n)('15a')).toEqual({
+      id: 'This field must be a number',
+    });
+  });
+
+  test('url should reject incomplete url', () => {
+    expect(url(i18n)('abcd')).toEqual({
+      id: 'Please enter a valid URL',
+    });
+  });
+
+  test('url should accept fully qualified url', () => {
+    expect(url(i18n)('http://example.com/foo')).toBeUndefined();
+  });
+
+  test('url should accept url with query params', () => {
+    expect(url(i18n)('https://example.com/foo?bar=baz')).toBeUndefined();
+  });
+
+  test('url should reject short protocol', () => {
+    expect(url(i18n)('h://example.com/foo')).toEqual({
+      id: 'Please enter a valid URL',
+    });
+  });
+
   test('combine should run all validators', () => {
     const validators = [required(null, i18n), noWhiteSpace(i18n)];
     expect(combine(validators)('')).toEqual({
@@ -127,5 +178,24 @@ describe('validators', () => {
       id: 'This field must not be blank',
     });
     expect(combine(validators)('ok')).toBeUndefined();
+  });
+
+  test('regExp rejects invalid regular expression', () => {
+    expect(regExp(i18n)('[')).toEqual({
+      id: 'This field must be a regular expression',
+    });
+    expect(regExp(i18n)('')).toBeUndefined();
+    expect(regExp(i18n)('ok')).toBeUndefined();
+    expect(regExp(i18n)('[^a-zA-Z]')).toBeUndefined();
+  });
+
+  test('email validator rejects obviously invalid email ', () => {
+    expect(requiredEmail(i18n)('foobar321')).toEqual({
+      id: 'Invalid email address',
+    });
+  });
+
+  test('bob has email', () => {
+    expect(requiredEmail(i18n)('bob@localhost')).toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ import {
   JobTemplatesAPI,
   LabelsAPI,
   ProjectsAPI,
+  InventoriesAPI,
 } from '../../../api';
 import JobTemplateEdit from './JobTemplateEdit';
 
@@ -35,7 +36,7 @@ const mockJobTemplate = {
   diff_mode: false,
   extra_vars: '---',
   forks: 0,
-  host_config_key: '',
+  host_config_key: '1234',
   id: 1,
   inventory: 2,
   job_slice_count: 1,
@@ -181,6 +182,12 @@ JobTemplatesAPI.readCredentials.mockResolvedValue({
 ProjectsAPI.readPlaybooks.mockResolvedValue({
   data: mockRelatedProjectPlaybooks,
 });
+InventoriesAPI.readOptions.mockResolvedValue({
+  data: { actions: { GET: {}, POST: {} } },
+});
+ProjectsAPI.readOptions.mockResolvedValue({
+  data: { actions: { GET: {}, POST: {} } },
+});
 LabelsAPI.read.mockResolvedValue({ data: { results: [] } });
 CredentialsAPI.read.mockResolvedValue({
   data: {
@@ -218,6 +225,10 @@ describe('<JobTemplateEdit />', () => {
       );
     });
     await waitForElement(wrapper, 'EmptyStateBody', el => el.length === 0);
+    expect(wrapper.find('FormGroup[label="Host Config Key"]').length).toBe(1);
+    expect(
+      wrapper.find('FormGroup[label="Host Config Key"]').prop('isRequired')
+    ).toBe(true);
   });
 
   test('handleSubmit should call api update', async () => {

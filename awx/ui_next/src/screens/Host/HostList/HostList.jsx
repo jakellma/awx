@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation, useRouteMatch } from 'react-router-dom';
+import { useHistory, useLocation, useRouteMatch } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 import { Card, PageSection } from '@patternfly/react-core';
@@ -8,14 +8,23 @@ import { HostsAPI } from '../../../api';
 import AlertModal from '../../../components/AlertModal';
 import DataListToolbar from '../../../components/DataListToolbar';
 import ErrorDetail from '../../../components/ErrorDetail';
-import PaginatedDataList, {
+import {
   ToolbarAddButton,
   ToolbarDeleteButton,
 } from '../../../components/PaginatedDataList';
+import PaginatedTable, {
+  HeaderRow,
+  HeaderCell,
+} from '../../../components/PaginatedTable';
 import useRequest, { useDeleteItems } from '../../../util/useRequest';
-import { getQSConfig, parseQueryString } from '../../../util/qs';
+import {
+  encodeQueryString,
+  getQSConfig,
+  parseQueryString,
+} from '../../../util/qs';
 
 import HostListItem from './HostListItem';
+import SmartInventoryButton from './SmartInventoryButton';
 
 const QS_CONFIG = getQSConfig('host', {
   page: 1,
@@ -24,12 +33,24 @@ const QS_CONFIG = getQSConfig('host', {
 });
 
 function HostList({ i18n }) {
+  const history = useHistory();
   const location = useLocation();
   const match = useRouteMatch();
   const [selected, setSelected] = useState([]);
+  const parsedQueryStrings = parseQueryString(QS_CONFIG, location.search);
+  const nonDefaultSearchParams = {};
+
+  Object.keys(parsedQueryStrings).forEach(key => {
+    if (!QS_CONFIG.defaultParams[key]) {
+      nonDefaultSearchParams[key] = parsedQueryStrings[key];
+    }
+  });
+
+  const hasNonDefaultSearchParams =
+    Object.keys(nonDefaultSearchParams).length > 0;
 
   const {
-    result: { hosts, count, actions },
+    result: { hosts, count, actions, relatedSearchableKeys, searchableKeys },
     error: contentError,
     isLoading,
     request: fetchHosts,
@@ -44,12 +65,20 @@ function HostList({ i18n }) {
         hosts: results[0].data.results,
         count: results[0].data.count,
         actions: results[1].data.actions,
+        relatedSearchableKeys: (
+          results[1]?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(results[1].data.actions?.GET || {}).filter(
+          key => results[1].data.actions?.GET[key].filterable
+        ),
       };
     }, [location]),
     {
       hosts: [],
       count: 0,
       actions: {},
+      relatedSearchableKeys: [],
+      searchableKeys: [],
     }
   );
 
@@ -64,7 +93,7 @@ function HostList({ i18n }) {
     deletionError,
     clearDeletionError,
   } = useDeleteItems(
-    useCallback(async () => {
+    useCallback(() => {
       return Promise.all(selected.map(host => HostsAPI.destroy(host.id)));
     }, [selected]),
     {
@@ -91,13 +120,21 @@ function HostList({ i18n }) {
     }
   };
 
+  const handleSmartInventoryClick = () => {
+    history.push(
+      `/inventories/smart_inventory/add?host_filter=${encodeURIComponent(
+        encodeQueryString(nonDefaultSearchParams)
+      )}`
+    );
+  };
+
   const canAdd =
     actions && Object.prototype.hasOwnProperty.call(actions, 'POST');
 
   return (
     <PageSection>
       <Card>
-        <PaginatedDataList
+        <PaginatedTable
           contentError={contentError}
           hasContentLoading={isLoading || isDeleteLoading}
           items={hosts}
@@ -108,24 +145,31 @@ function HostList({ i18n }) {
           toolbarSearchColumns={[
             {
               name: i18n._(t`Name`),
-              key: 'name',
+              key: 'name__icontains',
               isDefault: true,
             },
             {
+              name: i18n._(t`Description`),
+              key: 'description__icontains',
+            },
+            {
               name: i18n._(t`Created By (Username)`),
-              key: 'created_by__username',
+              key: 'created_by__username__icontains',
             },
             {
               name: i18n._(t`Modified By (Username)`),
-              key: 'modified_by__username',
+              key: 'modified_by__username__icontains',
             },
           ]}
-          toolbarSortColumns={[
-            {
-              name: i18n._(t`Name`),
-              key: 'name',
-            },
-          ]}
+          toolbarSearchableKeys={searchableKeys}
+          toolbarRelatedSearchableKeys={relatedSearchableKeys}
+          headerRow={
+            <HeaderRow qsConfig={QS_CONFIG}>
+              <HeaderCell sortKey="name">{i18n._(t`Name`)}</HeaderCell>
+              <HeaderCell>{i18n._(t`Inventory`)}</HeaderCell>
+              <HeaderCell>{i18n._(t`Actions`)}</HeaderCell>
+            </HeaderRow>
+          }
           renderToolbar={props => (
             <DataListToolbar
               {...props}
@@ -143,16 +187,25 @@ function HostList({ i18n }) {
                   itemsToDelete={selected}
                   pluralizedItemName={i18n._(t`Hosts`)}
                 />,
+                ...(canAdd
+                  ? [
+                      <SmartInventoryButton
+                        isDisabled={!hasNonDefaultSearchParams}
+                        onClick={() => handleSmartInventoryClick()}
+                      />,
+                    ]
+                  : []),
               ]}
             />
           )}
-          renderItem={host => (
+          renderRow={(host, index) => (
             <HostListItem
               key={host.id}
               host={host}
               detailUrl={`${match.url}/${host.id}/details`}
               isSelected={selected.some(row => row.id === host.id)}
               onSelect={() => handleSelect(host)}
+              rowIndex={index}
             />
           )}
           emptyStateControls={

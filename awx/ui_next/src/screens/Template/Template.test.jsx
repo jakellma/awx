@@ -18,11 +18,32 @@ const mockMe = {
   is_system_auditor: false,
 };
 describe('<Template />', () => {
+  let wrapper;
   beforeEach(() => {
     JobTemplatesAPI.readDetail.mockResolvedValue({
-      data: mockJobTemplateData,
+      data: { ...mockJobTemplateData, survey_enabled: false },
     });
-
+    JobTemplatesAPI.readTemplateOptions.mockResolvedValue({
+      data: {
+        actions: { PUT: true },
+      },
+    });
+    JobTemplatesAPI.readCredentials.mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 3,
+            type: 'credential',
+            url: '/api/v2/credentials/3/',
+            name: 'Vault1Id1',
+            inputs: {
+              vault_id: '1',
+            },
+            kind: 'vault',
+          },
+        ],
+      },
+    });
     OrganizationsAPI.read.mockResolvedValue({
       data: {
         count: 1,
@@ -35,21 +56,34 @@ describe('<Template />', () => {
         ],
       },
     });
+    JobTemplatesAPI.readLaunch.mockResolvedValue({ data: {} });
+    JobTemplatesAPI.readWebhookKey.mockResolvedValue({
+      data: {
+        webhook_key: 'key',
+      },
+    });
+  });
+  afterEach(() => {
+    jest.clearAllMocks();
+    wrapper.unmount();
   });
   test('initially renders succesfully', async () => {
     await act(async () => {
-      mountWithContexts(<Template setBreadcrumb={() => {}} me={mockMe} />);
+      wrapper = mountWithContexts(
+        <Template setBreadcrumb={() => {}} me={mockMe} />
+      );
     });
   });
   test('When component mounts API is called and the response is put in state', async () => {
     await act(async () => {
-      mountWithContexts(<Template setBreadcrumb={() => {}} me={mockMe} />);
+      wrapper = mountWithContexts(
+        <Template setBreadcrumb={() => {}} me={mockMe} />
+      );
     });
     expect(JobTemplatesAPI.readDetail).toBeCalled();
     expect(OrganizationsAPI.read).toBeCalled();
   });
   test('notifications tab shown for admins', async done => {
-    let wrapper;
     await act(async () => {
       wrapper = mountWithContexts(
         <Template setBreadcrumb={() => {}} me={mockMe} />
@@ -74,7 +108,6 @@ describe('<Template />', () => {
       },
     });
 
-    let wrapper;
     await act(async () => {
       wrapper = mountWithContexts(
         <Template setBreadcrumb={() => {}} me={mockMe} />
@@ -93,7 +126,7 @@ describe('<Template />', () => {
     const history = createMemoryHistory({
       initialEntries: ['/templates/job_template/1/foobar'],
     });
-    let wrapper;
+
     await act(async () => {
       wrapper = mountWithContexts(
         <Template setBreadcrumb={() => {}} me={mockMe} />,
@@ -116,5 +149,63 @@ describe('<Template />', () => {
     });
 
     await waitForElement(wrapper, 'ContentError', el => el.length === 1);
+  });
+  test('should call to get webhook key', async () => {
+    const history = createMemoryHistory({
+      initialEntries: ['/templates/job_template/1/foobar'],
+    });
+    await act(async () => {
+      wrapper = mountWithContexts(
+        <Template setBreadcrumb={() => {}} me={mockMe} />,
+        {
+          context: {
+            router: {
+              history,
+              route: {
+                location: history.location,
+                match: {
+                  params: { id: 1 },
+                  url: '/templates/job_template/1/foobar',
+                  path: '/templates/job_template/1/foobar',
+                },
+              },
+            },
+          },
+        }
+      );
+    });
+    expect(JobTemplatesAPI.readWebhookKey).toHaveBeenCalled();
+  });
+  test('should not call to get webhook key', async () => {
+    JobTemplatesAPI.readTemplateOptions.mockResolvedValueOnce({
+      data: {
+        actions: {},
+      },
+    });
+
+    const history = createMemoryHistory({
+      initialEntries: ['/templates/job_template/1/foobar'],
+    });
+    await act(async () => {
+      wrapper = mountWithContexts(
+        <Template setBreadcrumb={() => {}} me={mockMe} />,
+        {
+          context: {
+            router: {
+              history,
+              route: {
+                location: history.location,
+                match: {
+                  params: { id: 1 },
+                  url: '/templates/job_template/1/foobar',
+                  path: '/templates/job_template/1/foobar',
+                },
+              },
+            },
+          },
+        }
+      );
+    });
+    expect(JobTemplatesAPI.readWebhookKey).not.toHaveBeenCalled();
   });
 });

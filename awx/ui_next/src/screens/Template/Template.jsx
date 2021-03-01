@@ -13,6 +13,7 @@ import {
   useRouteMatch,
 } from 'react-router-dom';
 import RoutedTabs from '../../components/RoutedTabs';
+import { useConfig } from '../../contexts/Config';
 import useRequest from '../../util/useRequest';
 import ContentError from '../../components/ContentError';
 import JobList from '../../components/JobList';
@@ -24,57 +25,94 @@ import JobTemplateEdit from './JobTemplateEdit';
 import { JobTemplatesAPI, OrganizationsAPI } from '../../api';
 import TemplateSurvey from './TemplateSurvey';
 
-function Template({ i18n, me, setBreadcrumb }) {
+function Template({ i18n, setBreadcrumb }) {
+  const match = useRouteMatch();
   const location = useLocation();
   const { id: templateId } = useParams();
-  const match = useRouteMatch();
+  const { me = {} } = useConfig();
 
   const {
-    result: { isNotifAdmin, template },
-    isLoading: hasRolesandTemplateLoading,
-    error: rolesAndTemplateError,
+    result: { isNotifAdmin, template, surveyConfig, launchConfig },
+    isLoading,
+    error: contentError,
     request: loadTemplateAndRoles,
   } = useRequest(
     useCallback(async () => {
-      const [{ data }, notifAdminRes] = await Promise.all([
+      const [
+        { data },
+        actions,
+        notifAdminRes,
+        { data: launchConfiguration },
+      ] = await Promise.all([
         JobTemplatesAPI.readDetail(templateId),
+        JobTemplatesAPI.readTemplateOptions(templateId),
         OrganizationsAPI.read({
           page_size: 1,
           role_level: 'notification_admin_role',
         }),
+        JobTemplatesAPI.readLaunch(templateId),
       ]);
-      if (data.webhook_service && data?.related?.webhook_key) {
-        const {
-          data: { webhook_key },
-        } = await JobTemplatesAPI.readWebhookKey(templateId);
-        data.webhook_key = webhook_key;
-      }
-      setBreadcrumb(data);
+      let surveyConfiguration = null;
 
+      if (data.survey_enabled) {
+        const { data: survey } = await JobTemplatesAPI.readSurvey(templateId);
+
+        surveyConfiguration = survey;
+      }
+      if (data.summary_fields.credentials) {
+        const params = {
+          page: 1,
+          page_size: 200,
+          order_by: 'name',
+        };
+        const {
+          data: { results },
+        } = await JobTemplatesAPI.readCredentials(data.id, params);
+
+        data.summary_fields.credentials = results;
+      }
+
+      if (actions.data.actions.PUT) {
+        if (data.webhook_service && data?.related?.webhook_key) {
+          const {
+            data: { webhook_key },
+          } = await JobTemplatesAPI.readWebhookKey(templateId);
+
+          data.webhook_key = webhook_key;
+        }
+      }
       return {
         template: data,
         isNotifAdmin: notifAdminRes.data.results.length > 0,
+        surveyConfig: surveyConfiguration,
+        launchConfig: launchConfiguration,
       };
-    }, [setBreadcrumb, templateId]),
+    }, [templateId]),
     { isNotifAdmin: false, template: null }
   );
+
   useEffect(() => {
     loadTemplateAndRoles();
   }, [loadTemplateAndRoles, location.pathname]);
 
-  const createSchedule = data => {
-    return JobTemplatesAPI.createSchedule(templateId, data);
-  };
+  useEffect(() => {
+    if (template) {
+      setBreadcrumb(template);
+    }
+  }, [template, setBreadcrumb]);
 
-  const loadScheduleOptions = () => {
+  const loadScheduleOptions = useCallback(() => {
     return JobTemplatesAPI.readScheduleOptions(templateId);
-  };
+  }, [templateId]);
 
-  const loadSchedules = params => {
-    return JobTemplatesAPI.readSchedules(templateId, params);
-  };
+  const loadSchedules = useCallback(
+    params => {
+      return JobTemplatesAPI.readSchedules(templateId, params);
+    },
+    [templateId]
+  );
 
-  const canSeeNotificationsTab = me.is_system_auditor || isNotifAdmin;
+  const canSeeNotificationsTab = me?.is_system_auditor || isNotifAdmin;
   const canAddAndEditSurvey =
     template?.summary_fields?.user_capabilities.edit ||
     template?.summary_fields?.user_capabilities.delete;
@@ -123,22 +161,12 @@ function Template({ i18n, me, setBreadcrumb }) {
     tab.id = n;
   });
 
-  let showCardHeader = true;
-
-  if (
-    location.pathname.endsWith('edit') ||
-    location.pathname.includes('schedules/')
-  ) {
-    showCardHeader = false;
-  }
-
-  const contentError = rolesAndTemplateError;
-  if (!hasRolesandTemplateLoading && contentError) {
+  if (contentError) {
     return (
       <PageSection>
         <Card>
           <ContentError error={contentError}>
-            {contentError.response.status === 404 && (
+            {contentError.response?.status === 404 && (
               <span>
                 {i18n._(t`Template not found.`)}{' '}
                 <Link to="/templates">{i18n._(t`View all Templates.`)}</Link>
@@ -150,87 +178,84 @@ function Template({ i18n, me, setBreadcrumb }) {
     );
   }
 
+  const showCardHeader = !(
+    location.pathname.endsWith('edit') ||
+    location.pathname.includes('schedules/')
+  );
+
   return (
     <PageSection>
       <Card>
         {showCardHeader && <RoutedTabs tabsArray={tabsArray} />}
-        <Switch>
-          <Redirect
-            from="/templates/:templateType/:id"
-            to="/templates/:templateType/:id/details"
-            exact
-          />
-          {template && (
+        {template && (
+          <Switch>
+            <Redirect
+              from="/templates/:templateType/:id"
+              to="/templates/:templateType/:id/details"
+              exact
+            />
             <Route key="details" path="/templates/:templateType/:id/details">
               <JobTemplateDetail
-                hasTemplateLoading={hasRolesandTemplateLoading}
+                hasTemplateLoading={isLoading}
                 template={template}
               />
             </Route>
-          )}
-          {template && (
             <Route key="edit" path="/templates/:templateType/:id/edit">
               <JobTemplateEdit template={template} />
             </Route>
-          )}
-          {template && (
             <Route key="access" path="/templates/:templateType/:id/access">
               <ResourceAccessList
                 resource={template}
                 apiModel={JobTemplatesAPI}
               />
             </Route>
-          )}
-          {template && (
             <Route
               key="schedules"
               path="/templates/:templateType/:id/schedules"
             >
               <Schedules
-                createSchedule={createSchedule}
+                apiModel={JobTemplatesAPI}
                 setBreadcrumb={setBreadcrumb}
-                unifiedJobTemplate={template}
+                resource={template}
                 loadSchedules={loadSchedules}
                 loadScheduleOptions={loadScheduleOptions}
+                surveyConfig={surveyConfig}
+                launchConfig={launchConfig}
               />
             </Route>
-          )}
-          {canSeeNotificationsTab && (
-            <Route path="/templates/:templateType/:id/notifications">
-              <NotificationList
-                id={Number(templateId)}
-                canToggleNotifications={isNotifAdmin}
-                apiModel={JobTemplatesAPI}
-              />
-            </Route>
-          )}
-          {template?.id && (
+            {canSeeNotificationsTab && (
+              <Route path="/templates/:templateType/:id/notifications">
+                <NotificationList
+                  id={Number(templateId)}
+                  canToggleNotifications={isNotifAdmin}
+                  apiModel={JobTemplatesAPI}
+                />
+              </Route>
+            )}
             <Route path="/templates/:templateType/:id/completed_jobs">
               <JobList defaultParams={{ job__job_template: template.id }} />
             </Route>
-          )}
-          {template && (
             <Route path="/templates/:templateType/:id/survey">
               <TemplateSurvey
                 template={template}
                 canEdit={canAddAndEditSurvey}
               />
             </Route>
-          )}
-          {!hasRolesandTemplateLoading && (
-            <Route key="not-found" path="*">
-              <ContentError isNotFound>
-                {match.params.id && (
-                  <Link
-                    to={`/templates/${match.params.templateType}/${match.params.id}/details`}
-                  >
-                    {i18n._(t`View Template Details`)}
-                  </Link>
-                )}
-              </ContentError>
-            </Route>
-          )}
-        </Switch>
+            {!isLoading && (
+              <Route key="not-found" path="*">
+                <ContentError isNotFound>
+                  {match.params.id && (
+                    <Link
+                      to={`/templates/${match?.params?.templateType}/${templateId}/details`}
+                    >
+                      {i18n._(t`View Template Details`)}
+                    </Link>
+                  )}
+                </ContentError>
+              </Route>
+            )}
+          </Switch>
+        )}
       </Card>
     </PageSection>
   );

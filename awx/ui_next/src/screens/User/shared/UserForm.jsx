@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import PropTypes from 'prop-types';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { Formik, useField } from 'formik';
+import { Formik, useField, useFormikContext } from 'formik';
 import { Form, FormGroup } from '@patternfly/react-core';
 import AnsibleSelect from '../../../components/AnsibleSelect';
 import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
@@ -11,11 +11,16 @@ import FormField, {
   FormSubmitError,
 } from '../../../components/FormField';
 import OrganizationLookup from '../../../components/Lookup/OrganizationLookup';
-import { required, requiredEmail } from '../../../util/validators';
+import { required } from '../../../util/validators';
 import { FormColumnLayout } from '../../../components/FormLayout';
 
 function UserFormFields({ user, i18n }) {
   const [organization, setOrganization] = useState(null);
+  const { setFieldValue } = useFormikContext();
+
+  const ldapUser = user.ldap_dn;
+  const socialAuthUser = user.auth?.length > 0;
+  const externalAccount = user.external_account;
 
   const userTypeOptions = [
     {
@@ -38,16 +43,22 @@ function UserFormFields({ user, i18n }) {
     },
   ];
 
-  const organizationFieldArr = useField({
+  const [, organizationMeta, organizationHelpers] = useField({
     name: 'organization',
     validate: !user.id
       ? required(i18n._(t`Select a value for this field`), i18n)
       : () => undefined,
   });
-  const organizationMeta = organizationFieldArr[1];
-  const organizationHelpers = organizationFieldArr[2];
 
   const [userTypeField, userTypeMeta] = useField('user_type');
+
+  const onOrganizationChange = useCallback(
+    value => {
+      setFieldValue('organization', value.id);
+      setOrganization(value);
+    },
+    [setFieldValue]
+  );
 
   return (
     <>
@@ -56,38 +67,43 @@ function UserFormFields({ user, i18n }) {
         label={i18n._(t`Username`)}
         name="username"
         type="text"
-        validate={required(null, i18n)}
-        isRequired
+        validate={
+          !ldapUser && !externalAccount ? required(null, i18n) : () => undefined
+        }
+        isRequired={!ldapUser && !externalAccount}
       />
       <FormField
         id="user-email"
         label={i18n._(t`Email`)}
         name="email"
-        validate={requiredEmail(i18n)}
-        isRequired
+        type="text"
       />
-      <PasswordField
-        id="user-password"
-        label={i18n._(t`Password`)}
-        name="password"
-        validate={
-          !user.id
-            ? required(i18n._(t`This field must not be blank`), i18n)
-            : () => undefined
-        }
-        isRequired={!user.id}
-      />
-      <PasswordField
-        id="user-confirm-password"
-        label={i18n._(t`Confirm Password`)}
-        name="confirm_password"
-        validate={
-          !user.id
-            ? required(i18n._(t`This field must not be blank`), i18n)
-            : () => undefined
-        }
-        isRequired={!user.id}
-      />
+      {!ldapUser && !(socialAuthUser && externalAccount) && (
+        <>
+          <PasswordField
+            id="user-password"
+            label={i18n._(t`Password`)}
+            name="password"
+            validate={
+              !user.id
+                ? required(i18n._(t`This field must not be blank`), i18n)
+                : () => undefined
+            }
+            isRequired={!user.id}
+          />
+          <PasswordField
+            id="user-confirm-password"
+            label={i18n._(t`Confirm Password`)}
+            name="confirm_password"
+            validate={
+              !user.id
+                ? required(i18n._(t`This field must not be blank`), i18n)
+                : () => undefined
+            }
+            isRequired={!user.id}
+          />
+        </>
+      )}
       <FormField
         id="user-first-name"
         label={i18n._(t`First Name`)}
@@ -105,12 +121,10 @@ function UserFormFields({ user, i18n }) {
           helperTextInvalid={organizationMeta.error}
           isValid={!organizationMeta.touched || !organizationMeta.error}
           onBlur={() => organizationHelpers.setTouched()}
-          onChange={value => {
-            organizationHelpers.setValue(value.id);
-            setOrganization(value);
-          }}
+          onChange={onOrganizationChange}
           value={organization}
           required
+          autoPopulate={!user?.id}
         />
       )}
       <FormGroup

@@ -1,27 +1,60 @@
-import React from 'react';
-import { Formik, useField } from 'formik';
+import React, { useCallback, useState } from 'react';
+import { func, shape } from 'prop-types';
+import { Formik, useField, useFormikContext } from 'formik';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { arrayOf, func, object, shape } from 'prop-types';
-import { Form, FormGroup } from '@patternfly/react-core';
+import {
+  ActionGroup,
+  Button,
+  Form,
+  FormGroup,
+  Select as PFSelect,
+  SelectOption as PFSelectOption,
+  SelectVariant,
+} from '@patternfly/react-core';
+import styled from 'styled-components';
 import FormField, { FormSubmitError } from '../../../components/FormField';
-import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
-import AnsibleSelect from '../../../components/AnsibleSelect';
+import {
+  FormColumnLayout,
+  FormFullWidthLayout,
+} from '../../../components/FormLayout';
 import { required } from '../../../util/validators';
 import OrganizationLookup from '../../../components/Lookup/OrganizationLookup';
-import { FormColumnLayout } from '../../../components/FormLayout';
 import TypeInputsSubForm from './TypeInputsSubForm';
+import ExternalTestModal from './ExternalTestModal';
 
-function CredentialFormFields({
-  i18n,
-  credentialTypes,
-  formik,
-  initialValues,
-}) {
-  const [orgField, orgMeta, orgHelpers] = useField('organization');
+const Select = styled(PFSelect)`
+  ul {
+    max-width: 495px;
+  }
+`;
+
+const SelectOption = styled(PFSelectOption)`
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+`;
+
+function CredentialFormFields({ i18n, credentialTypes }) {
+  const { setFieldValue, initialValues, setFieldTouched } = useFormikContext();
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [credTypeField, credTypeMeta, credTypeHelpers] = useField({
     name: 'credential_type',
     validate: required(i18n._(t`Select a value for this field`), i18n),
+  });
+
+  const isGalaxyCredential =
+    !!credTypeField.value &&
+    credentialTypes[credTypeField.value]?.kind === 'galaxy';
+
+  const [orgField, orgMeta, orgHelpers] = useField({
+    name: 'organization',
+    validate:
+      isGalaxyCredential &&
+      required(
+        i18n._(t`Galaxy credentials must be owned by an Organization.`),
+        i18n
+      ),
   });
 
   const credentialTypeOptions = Object.keys(credentialTypes)
@@ -34,16 +67,14 @@ function CredentialFormFields({
     })
     .sort((a, b) => (a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1));
 
-  const resetSubFormFields = (newCredentialType, form) => {
+  const resetSubFormFields = newCredentialType => {
     const fields = credentialTypes[newCredentialType].inputs.fields || [];
     fields.forEach(
       ({ ask_at_runtime, type, id, choices, default: defaultValue }) => {
-        if (
-          parseInt(newCredentialType, 10) === form.initialValues.credential_type
-        ) {
-          form.setFieldValue(`inputs.${id}`, initialValues.inputs[id]);
+        if (parseInt(newCredentialType, 10) === initialValues.credential_type) {
+          setFieldValue(`inputs.${id}`, initialValues.inputs[id]);
           if (ask_at_runtime) {
-            form.setFieldValue(
+            setFieldValue(
               `passwordPrompts.${id}`,
               initialValues.passwordPrompts[id]
             );
@@ -51,27 +82,34 @@ function CredentialFormFields({
         } else {
           switch (type) {
             case 'string':
-              form.setFieldValue(`inputs.${id}`, defaultValue || '');
+              setFieldValue(`inputs.${id}`, defaultValue || '');
               break;
             case 'boolean':
-              form.setFieldValue(`inputs.${id}`, defaultValue || false);
+              setFieldValue(`inputs.${id}`, defaultValue || false);
               break;
             default:
               break;
           }
 
           if (choices) {
-            form.setFieldValue(`inputs.${id}`, defaultValue);
+            setFieldValue(`inputs.${id}`, defaultValue);
           }
 
           if (ask_at_runtime) {
-            form.setFieldValue(`passwordPrompts.${id}`, false);
+            setFieldValue(`passwordPrompts.${id}`, false);
           }
         }
-        form.setFieldTouched(`inputs.${id}`, false);
+        setFieldTouched(`inputs.${id}`, false);
       }
     );
   };
+
+  const onOrganizationChange = useCallback(
+    value => {
+      setFieldValue('organization', value);
+    },
+    [setFieldValue]
+  );
 
   return (
     <>
@@ -93,15 +131,15 @@ function CredentialFormFields({
         helperTextInvalid={orgMeta.error}
         isValid={!orgMeta.touched || !orgMeta.error}
         onBlur={() => orgHelpers.setTouched()}
-        onChange={value => {
-          orgHelpers.setValue(value);
-        }}
+        onChange={onOrganizationChange}
         value={orgField.value}
         touched={orgMeta.touched}
         error={orgMeta.error}
+        required={isGalaxyCredential}
+        isDisabled={initialValues.isOrgLookupDisabled}
       />
       <FormGroup
-        fieldId="credential-credentialType"
+        fieldId="credential-Type"
         helperTextInvalid={credTypeMeta.error}
         isRequired
         validated={
@@ -109,23 +147,29 @@ function CredentialFormFields({
         }
         label={i18n._(t`Credential Type`)}
       >
-        <AnsibleSelect
-          {...credTypeField}
-          id="credential_type"
-          data={[
-            {
-              value: '',
-              key: '',
-              label: i18n._(t`Choose a Credential Type`),
-              isDisabled: true,
-            },
-            ...credentialTypeOptions,
-          ]}
-          onChange={(event, value) => {
+        <Select
+          ouiaId="CredentialForm-credential_type"
+          aria-label={i18n._(t`Credential Type`)}
+          isOpen={isSelectOpen}
+          variant={SelectVariant.typeahead}
+          onToggle={setIsSelectOpen}
+          onSelect={(event, value) => {
             credTypeHelpers.setValue(value);
-            resetSubFormFields(value, formik);
+            resetSubFormFields(value);
+            setIsSelectOpen(false);
           }}
-        />
+          selections={credTypeField.value}
+          placeholder={i18n._(t`Select a credential Type`)}
+          isCreatable={false}
+          maxHeight="300px"
+          width="100%"
+        >
+          {credentialTypeOptions.map(credType => (
+            <SelectOption key={credType.value} value={credType.value}>
+              {credType.label}
+            </SelectOption>
+          ))}
+        </Select>
       </FormGroup>
       {credTypeField.value !== undefined &&
         credTypeField.value !== '' &&
@@ -139,21 +183,25 @@ function CredentialFormFields({
 }
 
 function CredentialForm({
+  i18n,
   credential = {},
   credentialTypes,
   inputSources,
   onSubmit,
   onCancel,
   submitError,
+  isOrgLookupDisabled,
   ...rest
 }) {
+  const [showExternalTestModal, setShowExternalTestModal] = useState(false);
   const initialValues = {
     name: credential.name || '',
     description: credential.description || '',
     organization: credential?.summary_fields?.organization || null,
-    credential_type: credential.credential_type || '',
-    inputs: {},
+    credential_type: credential?.credential_type || '',
+    inputs: credential?.inputs || {},
     passwordPrompts: {},
+    isOrgLookupDisabled: isOrgLookupDisabled || false,
   };
 
   Object.values(credentialTypes).forEach(credentialType => {
@@ -205,38 +253,79 @@ function CredentialForm({
       }}
     >
       {formik => (
-        <Form autoComplete="off" onSubmit={formik.handleSubmit}>
-          <FormColumnLayout>
-            <CredentialFormFields
-              formik={formik}
-              initialValues={initialValues}
-              credentialTypes={credentialTypes}
-              {...rest}
+        <>
+          <Form autoComplete="off" onSubmit={formik.handleSubmit}>
+            <FormColumnLayout>
+              <CredentialFormFields
+                credentialTypes={credentialTypes}
+                i18n={i18n}
+                {...rest}
+              />
+              <FormSubmitError error={submitError} />
+              <FormFullWidthLayout>
+                <ActionGroup>
+                  <Button
+                    id="credential-form-save-button"
+                    aria-label={i18n._(t`Save`)}
+                    variant="primary"
+                    type="button"
+                    onClick={formik.handleSubmit}
+                  >
+                    {i18n._(t`Save`)}
+                  </Button>
+                  {formik?.values?.credential_type &&
+                    credentialTypes[formik.values.credential_type]?.kind ===
+                      'external' && (
+                      <Button
+                        id="credential-form-test-button"
+                        aria-label={i18n._(t`Test`)}
+                        variant="secondary"
+                        type="button"
+                        onClick={() => setShowExternalTestModal(true)}
+                        isDisabled={!formik.isValid}
+                      >
+                        {i18n._(t`Test`)}
+                      </Button>
+                    )}
+                  <Button
+                    id="credential-form-cancel-button"
+                    aria-label={i18n._(t`Cancel`)}
+                    variant="link"
+                    type="button"
+                    onClick={onCancel}
+                  >
+                    {i18n._(t`Cancel`)}
+                  </Button>
+                </ActionGroup>
+              </FormFullWidthLayout>
+            </FormColumnLayout>
+          </Form>
+          {showExternalTestModal && (
+            <ExternalTestModal
+              credential={credential}
+              credentialType={credentialTypes[formik.values.credential_type]}
+              credentialFormValues={formik.values}
+              onClose={() => setShowExternalTestModal(false)}
             />
-            <FormSubmitError error={submitError} />
-            <FormActionGroup
-              onCancel={onCancel}
-              onSubmit={formik.handleSubmit}
-            />
-          </FormColumnLayout>
-        </Form>
+          )}
+        </>
       )}
     </Formik>
   );
 }
 
-CredentialForm.proptype = {
+CredentialForm.propTypes = {
   handleSubmit: func.isRequired,
   handleCancel: func.isRequired,
   credentialTypes: shape({}).isRequired,
   credential: shape({}),
-  inputSources: arrayOf(object),
+  inputSources: shape({}),
   submitError: shape({}),
 };
 
 CredentialForm.defaultProps = {
   credential: {},
-  inputSources: [],
+  inputSources: {},
   submitError: null,
 };
 

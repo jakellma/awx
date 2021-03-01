@@ -49,7 +49,12 @@ function MultiCredentialsLookup(props) {
   }, [fetchTypes]);
 
   const {
-    result: { credentials, credentialsCount },
+    result: {
+      credentials,
+      credentialsCount,
+      relatedSearchableKeys,
+      searchableKeys,
+    },
     request: fetchCredentials,
     error: credentialsError,
     isLoading: isCredentialsLoading,
@@ -62,15 +67,36 @@ function MultiCredentialsLookup(props) {
         };
       }
       const params = parseQueryString(QS_CONFIG, history.location.search);
-      const { results, count } = await loadCredentials(params, selectedType.id);
+      const [{ results, count }, actionsResponse] = await Promise.all([
+        loadCredentials(params, selectedType.id),
+        CredentialsAPI.readOptions(),
+      ]);
+
+      results.map(result => {
+        if (result.kind === 'vault' && result.inputs?.vault_id) {
+          result.label = `${result.name} | ${result.inputs.vault_id}`;
+          return result;
+        }
+        result.label = `${result.name}`;
+        return result;
+      });
+
       return {
         credentials: results,
         credentialsCount: count,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse.data.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
       };
     }, [selectedType, history.location]),
     {
       credentials: [],
       credentialsCount: 0,
+      relatedSearchableKeys: [],
+      searchableKeys: [],
     }
   );
 
@@ -92,7 +118,6 @@ function MultiCredentialsLookup(props) {
       credential={item}
     />
   );
-
   const isVault = selectedType?.kind === 'vault';
 
   return (
@@ -149,16 +174,16 @@ function MultiCredentialsLookup(props) {
               searchColumns={[
                 {
                   name: i18n._(t`Name`),
-                  key: 'name',
+                  key: 'name__icontains',
                   isDefault: true,
                 },
                 {
                   name: i18n._(t`Created By (Username)`),
-                  key: 'created_by__username',
+                  key: 'created_by__username__icontains',
                 },
                 {
                   name: i18n._(t`Modified By (Username)`),
-                  key: 'modified_by__username',
+                  key: 'modified_by__username__icontains',
                 },
               ]}
               sortColumns={[
@@ -167,8 +192,11 @@ function MultiCredentialsLookup(props) {
                   key: 'name',
                 },
               ]}
+              searchableKeys={searchableKeys}
+              relatedSearchableKeys={relatedSearchableKeys}
               multiple={isVault}
               header={i18n._(t`Credentials`)}
+              displayKey={isVault ? 'label' : 'name'}
               name="credentials"
               qsConfig={QS_CONFIG}
               readOnly={!canDelete}
@@ -176,9 +204,10 @@ function MultiCredentialsLookup(props) {
                 const hasSameVaultID = val =>
                   val?.inputs?.vault_id !== undefined &&
                   val?.inputs?.vault_id === item?.inputs?.vault_id;
-                const hasSameKind = val => val.kind === item.kind;
+                const hasSameCredentialType = val =>
+                  val.credential_type === item.credential_type;
                 const selectedItems = state.selectedItems.filter(i =>
-                  isVault ? !hasSameVaultID(i) : !hasSameKind(i)
+                  isVault ? !hasSameVaultID(i) : !hasSameCredentialType(i)
                 );
                 selectedItems.push(item);
                 return dispatch({

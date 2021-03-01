@@ -3,18 +3,26 @@ import React, { useState } from 'react';
 import { Link, useHistory } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { Button, Chip } from '@patternfly/react-core';
+import { Button, Chip, Label } from '@patternfly/react-core';
 import styled from 'styled-components';
 
 import AlertModal from '../../../components/AlertModal';
-import { DetailList, Detail } from '../../../components/DetailList';
+import {
+  DetailList,
+  Detail,
+  UserDateDetail,
+  LaunchedByDetail,
+} from '../../../components/DetailList';
 import { CardBody, CardActionsRow } from '../../../components/Card';
 import ChipGroup from '../../../components/ChipGroup';
 import CredentialChip from '../../../components/CredentialChip';
 import { VariablesInput as _VariablesInput } from '../../../components/CodeMirrorInput';
 import DeleteButton from '../../../components/DeleteButton';
 import ErrorDetail from '../../../components/ErrorDetail';
-import LaunchButton from '../../../components/LaunchButton';
+import {
+  LaunchButton,
+  ReLaunchDropDown,
+} from '../../../components/LaunchButton';
 import StatusIcon from '../../../components/StatusIcon';
 import { toTitleCase } from '../../../util/strings';
 import { formatDateString } from '../../../util/dates';
@@ -49,49 +57,30 @@ const VERBOSITY = {
   4: '4 (Connection Debug)',
 };
 
-const getLaunchedByDetails = ({ summary_fields = {}, related = {} }) => {
-  const {
-    created_by: createdBy,
-    job_template: jobTemplate,
-    schedule,
-  } = summary_fields;
-  const { schedule: relatedSchedule } = related;
-
-  if (!createdBy && !schedule) {
-    return null;
-  }
-
-  let link;
-  let value;
-
-  if (createdBy) {
-    link = `/users/${createdBy.id}`;
-    value = createdBy.username;
-  } else if (relatedSchedule && jobTemplate) {
-    link = `/templates/job_template/${jobTemplate.id}/schedules/${schedule.id}`;
-    value = schedule.name;
-  } else {
-    link = null;
-    value = schedule.name;
-  }
-
-  return { link, value };
-};
-
 function JobDetail({ job, i18n }) {
   const {
+    created_by,
+    credential,
     credentials,
     instance_group: instanceGroup,
     inventory,
     job_template: jobTemplate,
+    workflow_job_template: workflowJobTemplate,
     labels,
     project,
+    source_workflow_job,
   } = job.summary_fields;
   const [errorMsg, setErrorMsg] = useState();
   const history = useHistory();
 
-  const { value: launchedByValue, link: launchedByLink } =
-    getLaunchedByDetails(job) || {};
+  const jobTypes = {
+    project_update: i18n._(t`Source Control Update`),
+    inventory_update: i18n._(t`Inventory Sync`),
+    job: i18n._(t`Playbook Run`),
+    ad_hoc_command: i18n._(t`Command`),
+    management_job: i18n._(t`Management Job`),
+    workflow_job: i18n._(t`Workflow Job`),
+  };
 
   const deleteJob = async () => {
     try {
@@ -120,16 +109,42 @@ function JobDetail({ job, i18n }) {
     }
   };
 
+  const buildInstanceGroupLink = item => {
+    if (item.is_isolated) {
+      return (
+        <>
+          <Link to={`/instance_groups/${item.id}`}>{item.name}</Link>
+          <span css="margin-left: 12px">
+            <Label aria-label={i18n._(t`isolated instance`)}>
+              {i18n._(t`Isolated`)}
+            </Label>
+          </span>
+        </>
+      );
+    }
+    return <Link to={`/instance_groups/${item.id}`}>{item.name}</Link>;
+  };
+
+  const buildContainerGroupLink = item => {
+    return (
+      <Link to={`/instance_groups/container_group/${item.id}`}>
+        {item.name}
+      </Link>
+    );
+  };
+
   return (
     <CardBody>
       <DetailList>
-        {/* TODO: hookup status to websockets */}
         <Detail
+          fullWidth={Boolean(job.job_explanation)}
           label={i18n._(t`Status`)}
           value={
             <StatusDetailValue>
               {job.status && <StatusIcon status={job.status} />}
-              {toTitleCase(job.status)}
+              {job.job_explanation
+                ? job.job_explanation
+                : toTitleCase(job.status)}
             </StatusDetailValue>
           }
         />
@@ -143,7 +158,7 @@ function JobDetail({ job, i18n }) {
         />
         {jobTemplate && (
           <Detail
-            label={i18n._(t`Template`)}
+            label={i18n._(t`Job Template`)}
             value={
               <Link to={`/templates/job_template/${jobTemplate.id}`}>
                 {jobTemplate.name}
@@ -151,17 +166,30 @@ function JobDetail({ job, i18n }) {
             }
           />
         )}
-        <Detail label={i18n._(t`Job Type`)} value={toTitleCase(job.job_type)} />
-        <Detail
-          label={i18n._(t`Launched By`)}
-          value={
-            launchedByLink ? (
-              <Link to={`${launchedByLink}`}>{launchedByValue}</Link>
-            ) : (
-              launchedByValue
-            )
-          }
-        />
+        {workflowJobTemplate && (
+          <Detail
+            label={i18n._(t`Workflow Job Template`)}
+            value={
+              <Link
+                to={`/templates/workflow_job_template/${workflowJobTemplate.id}`}
+              >
+                {workflowJobTemplate.name}
+              </Link>
+            }
+          />
+        )}
+        {source_workflow_job && (
+          <Detail
+            label={i18n._(t`Source Workflow Job`)}
+            value={
+              <Link to={`/jobs/workflow/${source_workflow_job.id}`}>
+                {source_workflow_job.id} - {source_workflow_job.name}
+              </Link>
+            }
+          />
+        )}
+        <Detail label={i18n._(t`Job Type`)} value={jobTypes[job.type]} />
+        <LaunchedByDetail job={job} i18n={i18n} />
         {inventory && (
           <Detail
             label={i18n._(t`Inventory`)}
@@ -195,14 +223,16 @@ function JobDetail({ job, i18n }) {
         <Detail label={i18n._(t`Verbosity`)} value={VERBOSITY[job.verbosity]} />
         <Detail label={i18n._(t`Environment`)} value={job.custom_virtualenv} />
         <Detail label={i18n._(t`Execution Node`)} value={job.execution_node} />
-        {instanceGroup && (
+        {instanceGroup && !instanceGroup?.is_containerized && (
           <Detail
             label={i18n._(t`Instance Group`)}
-            value={
-              <Link to={`/instance_groups/${instanceGroup.id}`}>
-                {instanceGroup.name}
-              </Link>
-            }
+            value={buildInstanceGroupLink(instanceGroup)}
+          />
+        )}
+        {instanceGroup && instanceGroup?.is_containerized && (
+          <Detail
+            label={i18n._(t`Container Group`)}
+            value={buildContainerGroupLink(instanceGroup)}
           />
         )}
         {typeof job.job_slice_number === 'number' &&
@@ -212,6 +242,20 @@ function JobDetail({ job, i18n }) {
               value={`${job.job_slice_number}/${job.job_slice_count}`}
             />
           )}
+        {credential && (
+          <Detail
+            label={i18n._(t`Machine Credential`)}
+            value={
+              <ChipGroup numChips={5} totalChips={1}>
+                <CredentialChip
+                  key={credential.id}
+                  credential={credential}
+                  isReadOnly
+                />
+              </ChipGroup>
+            }
+          />
+        )}
         {credentials && credentials.length > 0 && (
           <Detail
             fullWidth
@@ -240,6 +284,48 @@ function JobDetail({ job, i18n }) {
             }
           />
         )}
+        {job.job_tags && job.job_tags.length > 0 && (
+          <Detail
+            fullWidth
+            label={i18n._(t`Job Tags`)}
+            value={
+              <ChipGroup
+                numChips={5}
+                totalChips={job.job_tags.split(',').length}
+              >
+                {job.job_tags.split(',').map(jobTag => (
+                  <Chip key={jobTag} isReadOnly>
+                    {jobTag}
+                  </Chip>
+                ))}
+              </ChipGroup>
+            }
+          />
+        )}
+        {job.skip_tags && job.skip_tags.length > 0 && (
+          <Detail
+            fullWidth
+            label={i18n._(t`Skip Tags`)}
+            value={
+              <ChipGroup
+                numChips={5}
+                totalChips={job.skip_tags.split(',').length}
+              >
+                {job.skip_tags.split(',').map(skipTag => (
+                  <Chip key={skipTag} isReadOnly>
+                    {skipTag}
+                  </Chip>
+                ))}
+              </ChipGroup>
+            }
+          />
+        )}
+        <UserDateDetail
+          label={i18n._(t`Created`)}
+          date={job.created}
+          user={created_by}
+        />
+        <UserDateDetail label={i18n._(t`Last Modified`)} date={job.modified} />
       </DetailList>
       {job.extra_vars && (
         <VariablesInput
@@ -263,7 +349,14 @@ function JobDetail({ job, i18n }) {
       )}
       <CardActionsRow>
         {job.type !== 'system_job' &&
-          job.summary_fields.user_capabilities.start && (
+          job.summary_fields.user_capabilities.start &&
+          (job.status === 'failed' && job.type === 'job' ? (
+            <LaunchButton resource={job}>
+              {({ handleRelaunch }) => (
+                <ReLaunchDropDown isPrimary handleRelaunch={handleRelaunch} />
+              )}
+            </LaunchButton>
+          ) : (
             <LaunchButton resource={job} aria-label={i18n._(t`Relaunch`)}>
               {({ handleRelaunch }) => (
                 <Button type="submit" onClick={handleRelaunch}>
@@ -271,7 +364,7 @@ function JobDetail({ job, i18n }) {
                 </Button>
               )}
             </LaunchButton>
-          )}
+          ))}
         {job.summary_fields.user_capabilities.delete && (
           <DeleteButton
             name={job.name}

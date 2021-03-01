@@ -12,6 +12,7 @@ from django.utils.translation import ugettext_lazy as _
 from django.conf import settings
 from django.utils.timezone import now, timedelta
 
+import redis
 from solo.models import SingletonModel
 
 from awx import __version__ as awx_application_version
@@ -23,7 +24,7 @@ from awx.main.models.unified_jobs import UnifiedJob
 from awx.main.utils import get_cpu_capacity, get_mem_capacity, get_system_task_capacity
 from awx.main.models.mixins import RelatedJobsMixin
 
-__all__ = ('Instance', 'InstanceGroup', 'TowerScheduleState', 'TowerAnalyticsState')
+__all__ = ('Instance', 'InstanceGroup', 'TowerScheduleState')
 
 
 class HasPolicyEditsMixin(HasEditsMixin):
@@ -152,6 +153,14 @@ class Instance(HasPolicyEditsMixin, BaseModel):
             self.capacity = get_system_task_capacity(self.capacity_adjustment)
         else:
             self.capacity = 0
+
+        try:
+            # if redis is down for some reason, that means we can't persist
+            # playbook event data; we should consider this a zero capacity event
+            redis.Redis.from_url(settings.BROKER_URL).ping()
+        except redis.ConnectionError:
+            self.capacity = 0
+
         self.cpu = cpu[0]
         self.memory = mem[0]
         self.cpu_capacity = cpu[1]
@@ -252,18 +261,20 @@ class InstanceGroup(HasPolicyEditsMixin, BaseModel, RelatedJobsMixin):
         app_label = 'main'
 
 
-    def fit_task_to_most_remaining_capacity_instance(self, task):
+    @staticmethod
+    def fit_task_to_most_remaining_capacity_instance(task, instances):
         instance_most_capacity = None
-        for i in self.instances.filter(capacity__gt=0, enabled=True).order_by('hostname'):
+        for i in instances:
             if i.remaining_capacity >= task.task_impact and \
                     (instance_most_capacity is None or
                      i.remaining_capacity > instance_most_capacity.remaining_capacity):
                 instance_most_capacity = i
         return instance_most_capacity
 
-    def find_largest_idle_instance(self):
+    @staticmethod
+    def find_largest_idle_instance(instances):
         largest_instance = None
-        for i in self.instances.filter(capacity__gt=0, enabled=True).order_by('hostname'):
+        for i in instances:
             if i.jobs_running == 0:
                 if largest_instance is None:
                     largest_instance = i
@@ -285,10 +296,6 @@ class InstanceGroup(HasPolicyEditsMixin, BaseModel, RelatedJobsMixin):
 
 class TowerScheduleState(SingletonModel):
     schedule_last_run = models.DateTimeField(auto_now_add=True)
-
-
-class TowerAnalyticsState(SingletonModel):
-    last_run = models.DateTimeField(auto_now_add=True)
 
 
 def schedule_policy_task():

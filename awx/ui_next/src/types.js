@@ -118,6 +118,11 @@ export const InstanceGroup = shape({
   name: string.isRequired,
 });
 
+export const Instance = shape({
+  id: number.isRequired,
+  name: string.isRequired,
+});
+
 export const Label = shape({
   id: number.isRequired,
   name: string.isRequired,
@@ -148,7 +153,7 @@ export const Project = shape({
   created: string,
   name: string.isRequired,
   description: string,
-  scm_type: oneOf(['', 'git', 'hg', 'svn', 'insights']),
+  scm_type: oneOf(['', 'git', 'svn', 'archive', 'insights']),
   scm_url: string,
   scm_branch: string,
   scm_refspec: string,
@@ -253,7 +258,7 @@ export const User = shape({
   username: string,
   first_name: string,
   last_name: string,
-  email: string.isRequired,
+  email: string,
   is_superuser: bool,
   is_system_auditor: bool,
   ldap_dn: string,
@@ -361,4 +366,44 @@ export const CredentialType = shape({
   kind: string.isRequired,
   namespace: string,
   inputs: shape({}).isRequired,
+});
+
+export const NotificationType = oneOf([
+  'email',
+  'grafana',
+  'irc',
+  'mattermost',
+  'pagerduty',
+  'rocketchat',
+  'slack',
+  'twilio',
+  'webhook',
+]);
+
+export const NotificationTemplate = shape({
+  id: number.isRequired,
+  name: string.isRequired,
+  description: string,
+  url: string.isRequired,
+  organization: number.isRequired,
+  notification_type: NotificationType,
+  summary_fields: shape({
+    organization: Organization,
+  }),
+});
+
+export const WorkflowApproval = shape({
+  id: number.isRequired,
+  name: string.isRequired,
+  description: string,
+  url: string.isRequired,
+  failed: bool,
+  started: string,
+  finished: string,
+  canceled_on: string,
+  elapsed: number,
+  job_explanation: string,
+  can_approve_or_deny: bool,
+  approval_expiration: string,
+  timed_out: bool,
 });

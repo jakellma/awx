@@ -11,6 +11,8 @@ import {
   LabelsAPI,
   OrganizationsAPI,
   InventoriesAPI,
+  ProjectsAPI,
+  CredentialTypesAPI,
 } from '../../../api';
 
 jest.mock('../../../api/models/CredentialTypes');
@@ -18,6 +20,8 @@ jest.mock('../../../api/models/WorkflowJobTemplates');
 jest.mock('../../../api/models/Labels');
 jest.mock('../../../api/models/Organizations');
 jest.mock('../../../api/models/Inventories');
+jest.mock('../../../api/models/Projects');
+jest.mock('../../../api/models/Credentials');
 
 describe('<WorkflowJobTemplateForm/>', () => {
   let wrapper;
@@ -70,6 +74,15 @@ describe('<WorkflowJobTemplateForm/>', () => {
         { id: 1, name: 'Foo' },
         { id: 2, name: 'Bar' },
       ],
+    });
+    CredentialTypesAPI.read.mockResolvedValue({
+      data: { results: [{ id: 1 }] },
+    });
+    InventoriesAPI.readOptions.mockResolvedValue({
+      data: { actions: { GET: {}, POST: {} } },
+    });
+    ProjectsAPI.readOptions.mockResolvedValue({
+      data: { actions: { GET: {}, POST: {} } },
     });
 
     history = createMemoryHistory({
@@ -208,10 +221,14 @@ describe('<WorkflowJobTemplateForm/>', () => {
       wrapper.find('Checkbox[aria-label="Enable Webhook"]').prop('isChecked')
     ).toBe(true);
     expect(
-      wrapper.find('input[aria-label="wfjt-webhook-key"]').prop('readOnly')
+      wrapper
+        .find('input[aria-label="workflow job template webhook key"]')
+        .prop('readOnly')
     ).toBe(true);
     expect(
-      wrapper.find('input[aria-label="wfjt-webhook-key"]').prop('value')
+      wrapper
+        .find('input[aria-label="workflow job template webhook key"]')
+        .prop('value')
     ).toBe('sdfghjklmnbvcdsew435678iokjhgfd');
     await act(() =>
       wrapper.find('Button[aria-label="Update webhook key"]').prop('onClick')()
@@ -250,5 +267,9 @@ describe('<WorkflowJobTemplateForm/>', () => {
     });
 
     expect(handleCancel).toBeCalled();
+  });
+
+  test('should not show inventory field as required', () => {
+    expect(wrapper.find('InventoryLookup').prop('required')).toBe(false);
   });
 });

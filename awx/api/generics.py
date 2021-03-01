@@ -47,10 +47,9 @@ from awx.main.utils import (
     get_object_or_400,
     decrypt_field,
     get_awx_version,
-    get_licenser,
-    StubLicense
 )
 from awx.main.utils.db import get_all_field_names
+from awx.main.views import ApiErrorView
 from awx.api.serializers import ResourceAccessListElementSerializer, CopySerializer, UserSerializer
 from awx.api.versioning import URLPathVersioning
 from awx.api.metadata import SublistAttachDetatchMetadata, Metadata
@@ -188,6 +187,30 @@ class APIView(views.APIView):
         '''
         Log warning for 400 requests.  Add header with elapsed time.
         '''
+        from awx.main.utils import get_licenser
+        from awx.main.utils.licensing import OpenLicense
+        #
+        # If the URL was rewritten, and we get a 404, we should entirely
+        # replace the view in the request context with an ApiErrorView()
+        # Without this change, there will be subtle differences in the BrowseableAPIRenderer
+        #
+        # These differences could provide contextual clues which would allow
+        # anonymous users to determine if usernames were valid or not
+        # (e.g., if an anonymous user visited `/api/v2/users/valid/`, and got a 404,
+        # but also saw that the page heading said "User Detail", they might notice
+        # that's a difference in behavior from a request to `/api/v2/users/not-valid/`, which
+        # would show a page header of "Not Found").  Changing the view here
+        # guarantees that the rendered response will look exactly like the response
+        # when you visit a URL that has no matching URL paths in `awx.api.urls`.
+        #
+        if response.status_code == 404 and 'awx.named_url_rewritten' in request.environ:
+            self.headers.pop('Allow', None)
+            response = super(APIView, self).finalize_response(request, response, *args, **kwargs)
+            view = ApiErrorView()
+            setattr(view, 'request', request)
+            response.renderer_context['view'] = view
+            return response
+
         if response.status_code >= 400:
             status_msg = "status %s received by user %s attempting to access %s from %s" % \
                          (response.status_code, request.user, request.path, request.META.get('REMOTE_ADDR', None))
@@ -201,7 +224,8 @@ class APIView(views.APIView):
         response = super(APIView, self).finalize_response(request, response, *args, **kwargs)
         time_started = getattr(self, 'time_started', None)
         response['X-API-Product-Version'] = get_awx_version()
-        response['X-API-Product-Name'] = 'AWX' if isinstance(get_licenser(), StubLicense) else 'Red Hat Ansible Tower'
+        response['X-API-Product-Name'] = 'AWX' if isinstance(get_licenser(), OpenLicense) else 'Red Hat Ansible Tower'
+        
         response['X-API-Node'] = settings.CLUSTER_HOST_ID
         if time_started:
             time_elapsed = time.time() - self.time_started

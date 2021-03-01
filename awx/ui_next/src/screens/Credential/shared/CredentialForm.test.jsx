@@ -4,6 +4,7 @@ import { mountWithContexts } from '../../../../testUtils/enzymeHelpers';
 import machineCredential from './data.machineCredential.json';
 import gceCredential from './data.gceCredential.json';
 import scmCredential from './data.scmCredential.json';
+import galaxyCredential from './data.galaxyCredential.json';
 import credentialTypesArr from './data.credentialTypes.json';
 import CredentialForm from './CredentialForm';
 
@@ -99,6 +100,9 @@ describe('<CredentialForm />', () => {
     test('should display form fields on add properly', async () => {
       addFieldExpects();
     });
+    test('should hide Test button initially', () => {
+      expect(wrapper.find('Button[children="Test"]').length).toBe(0);
+    });
     test('should update form values', async () => {
       // name and description change
       await act(async () => {
@@ -133,24 +137,44 @@ describe('<CredentialForm />', () => {
     test('should display cred type subform when scm type select has a value', async () => {
       await act(async () => {
         await wrapper
-          .find('AnsibleSelect[id="credential_type"]')
-          .invoke('onChange')(null, 1);
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onToggle')();
       });
       wrapper.update();
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onSelect')(null, 1);
+      });
+      wrapper.update();
+
       machineFieldExpects();
       await act(async () => {
         await wrapper
-          .find('AnsibleSelect[id="credential_type"]')
-          .invoke('onChange')(null, 2);
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onToggle')();
+      });
+      wrapper.update();
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onSelect')(null, 2);
       });
       wrapper.update();
       sourceFieldExpects();
     });
+
     test('should update expected fields when gce service account json file uploaded', async () => {
       await act(async () => {
         await wrapper
-          .find('AnsibleSelect[id="credential_type"]')
-          .invoke('onChange')(null, 10);
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onToggle')();
+      });
+      wrapper.update();
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onSelect')(null, 10);
       });
       wrapper.update();
       gceFieldExpects();
@@ -160,7 +184,7 @@ describe('<CredentialForm />', () => {
         wrapper.find('textarea#credential-ssh_key_data').prop('value')
       ).toBe('');
       await act(async () => {
-        wrapper.find('FileUpload').invoke('onChange')({
+        wrapper.find('FileUpload#credential-gce-file').invoke('onChange')({
           name: 'foo.json',
           text: () =>
             '{"client_email":"testemail@ansible.com","project_id":"test123","private_key":"-----BEGIN PRIVATE KEY-----\\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\\n-----END PRIVATE KEY-----\\n"}',
@@ -179,9 +203,12 @@ describe('<CredentialForm />', () => {
         '-----BEGIN PRIVATE KEY-----\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n-----END PRIVATE KEY-----\n'
       );
     });
+
     test('should clear expected fields when file clear button clicked', async () => {
       await act(async () => {
-        wrapper.find('FileUploadField').invoke('onClearButtonClick')();
+        wrapper
+          .find('FileUploadField#credential-gce-file')
+          .invoke('onClearButtonClick')();
       });
       wrapper.update();
       expect(wrapper.find('input#credential-username').prop('value')).toBe('');
@@ -190,26 +217,48 @@ describe('<CredentialForm />', () => {
         wrapper.find('textarea#credential-ssh_key_data').prop('value')
       ).toBe('');
     });
+    test('should update field when RSA Private Key file uploaded', async () => {
+      await act(async () => {
+        wrapper.find('FileUpload#credential-ssh_key_data').invoke('onChange')(
+          '-----BEGIN PRIVATE KEY-----\\nBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\\n-----END PRIVATE KEY-----\\n',
+          'foo.key'
+        );
+      });
+      wrapper.update();
+      expect(
+        wrapper.find('textarea#credential-ssh_key_data').prop('value')
+      ).toBe(
+        '-----BEGIN PRIVATE KEY-----\\nBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\\n-----END PRIVATE KEY-----\\n'
+      );
+    });
     test('should show error when error thrown parsing JSON', async () => {
       await act(async () => {
         await wrapper
-          .find('AnsibleSelect[id="credential_type"]')
-          .invoke('onChange')(null, 10);
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onToggle')();
+      });
+      wrapper.update();
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onSelect')(null, 10);
       });
       wrapper.update();
       expect(wrapper.find('#credential-gce-file-helper').text()).toBe(
         'Select a JSON formatted service account key to autopopulate the following fields.'
       );
       await act(async () => {
-        wrapper.find('FileUpload').invoke('onChange')({
+        wrapper.find('FileUpload#credential-gce-file').invoke('onChange')({
           name: 'foo.json',
           text: () => '{not good json}',
         });
       });
       wrapper.update();
       expect(
-        wrapper.find('FormGroup[fieldId="credential-gce-file"]').prop('isValid')
-      ).toBe(false);
+        wrapper
+          .find('FormGroup[fieldId="credential-gce-file"]')
+          .prop('validated')
+      ).toBe('error');
 
       expect(
         wrapper
@@ -217,6 +266,24 @@ describe('<CredentialForm />', () => {
           .prop('helperTextInvalid')
       ).toBe(
         'There was an error parsing the file. Please check the file formatting and try again.'
+      );
+    });
+    test('should show Test button when external credential type is selected', async () => {
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onToggle')();
+      });
+      wrapper.update();
+      await act(async () => {
+        await wrapper
+          .find('Select[aria-label="Credential Type"]')
+          .invoke('onSelect')(null, 21);
+      });
+      wrapper.update();
+      expect(wrapper.find('Button[children="Test"]').length).toBe(1);
+      expect(wrapper.find('Button[children="Test"]').props().isDisabled).toBe(
+        true
       );
     });
     test('should call handleCancel when Cancel button is clicked', async () => {
@@ -260,6 +327,27 @@ describe('<CredentialForm />', () => {
       machineFieldExpects();
     });
 
+    test('organization lookup should be disabled', async () => {
+      await act(async () => {
+        wrapper = mountWithContexts(
+          <CredentialForm
+            onCancel={onCancel}
+            onSubmit={onSubmit}
+            credential={machineCredential}
+            credentialTypes={credentialTypes}
+            isOrgLookupDisabled
+          />
+        );
+      });
+
+      expect(
+        wrapper
+          .find('CredentialFormFields')
+          .find('OrganizationLookup')
+          .prop('isDisabled')
+      ).toBe(true);
+    });
+
     test('should display form fields for source control credential properly', async () => {
       await act(async () => {
         wrapper = mountWithContexts(
@@ -288,6 +376,26 @@ describe('<CredentialForm />', () => {
       });
 
       gceFieldExpects();
+    });
+
+    test('should display from fields for galaxy/automation hub credentials', async () => {
+      await act(async () => {
+        wrapper = mountWithContexts(
+          <CredentialForm
+            onCancel={onCancel}
+            onSubmit={onSubmit}
+            credential={galaxyCredential}
+            credentialTypes={credentialTypes}
+          />
+        );
+      });
+      expect(wrapper.find('FormGroup[label="Name"]').length).toBe(1);
+      expect(wrapper.find('FormGroup[label="Description"]').length).toBe(1);
+      expect(wrapper.find('FormGroup[label="Organization"]').length).toBe(1);
+      expect(
+        wrapper.find('FormGroup[label="Organization"]').prop('isRequired')
+      ).toBe(true);
+      expect(wrapper.find('FormGroup[label="Credential Type"]').length).toBe(1);
     });
   });
 });

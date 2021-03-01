@@ -14,6 +14,8 @@ import time
 from base64 import b64encode
 from collections import OrderedDict
 
+from urllib3.exceptions import ConnectTimeoutError
+
 
 # Django
 from django.conf import settings
@@ -122,6 +124,7 @@ from awx.api.views.organization import ( # noqa
     OrganizationNotificationTemplatesSuccessList,
     OrganizationNotificationTemplatesApprovalList,
     OrganizationInstanceGroupsList,
+    OrganizationGalaxyCredentialsList,
     OrganizationAccessList,
     OrganizationObjectRolesList,
 )
@@ -150,6 +153,7 @@ from awx.api.views.root import ( # noqa
     ApiV2PingView,
     ApiV2ConfigView,
     ApiV2SubscriptionView,
+    ApiV2AttachView,
 )
 from awx.api.views.webhooks import ( # noqa
     WebhookKeyView,
@@ -171,6 +175,15 @@ def api_exception_handler(exc, context):
         exc = ParseError(exc.args[0])
     if isinstance(context['view'], UnifiedJobStdout):
         context['view'].renderer_classes = [renderers.BrowsableAPIRenderer, JSONRenderer]
+    if isinstance(exc, APIException):
+        req = context['request']._request
+        if 'awx.named_url_rewritten' in req.environ and not str(getattr(exc, 'status_code', 0)).startswith('2'):
+            # if the URL was rewritten, and it's not a 2xx level status code,
+            # revert the request.path to its original value to avoid leaking
+            # any context about the existance of resources
+            req.path = req.environ['awx.named_url_rewritten']
+            if exc.status_code == 403:
+                exc = NotFound(detail=_('Not found.'))
     return exception_handler(exc, context)
 
 
@@ -229,8 +242,8 @@ class DashboardView(APIView):
         git_failed_projects = git_projects.filter(last_job_failed=True)
         svn_projects = user_projects.filter(scm_type='svn')
         svn_failed_projects = svn_projects.filter(last_job_failed=True)
-        hg_projects = user_projects.filter(scm_type='hg')
-        hg_failed_projects = hg_projects.filter(last_job_failed=True)
+        archive_projects = user_projects.filter(scm_type='archive')
+        archive_failed_projects = archive_projects.filter(last_job_failed=True)
         data['scm_types'] = {}
         data['scm_types']['git'] = {'url': reverse('api:project_list', request=request) + "?scm_type=git",
                                     'label': 'Git',
@@ -242,11 +255,11 @@ class DashboardView(APIView):
                                     'failures_url': reverse('api:project_list', request=request) + "?scm_type=svn&last_job_failed=True",
                                     'total': svn_projects.count(),
                                     'failed': svn_failed_projects.count()}
-        data['scm_types']['hg'] = {'url': reverse('api:project_list', request=request) + "?scm_type=hg",
-                                   'label': 'Mercurial',
-                                   'failures_url': reverse('api:project_list', request=request) + "?scm_type=hg&last_job_failed=True",
-                                   'total': hg_projects.count(),
-                                   'failed': hg_failed_projects.count()}
+        data['scm_types']['archive'] = {'url': reverse('api:project_list', request=request) + "?scm_type=archive",
+                                        'label': 'Remote Archive',
+                                        'failures_url': reverse('api:project_list', request=request) + "?scm_type=archive&last_job_failed=True",
+                                        'total': archive_projects.count(),
+                                        'failed': archive_failed_projects.count()}
 
         user_list = get_user_queryset(request.user, models.User)
         team_list = get_user_queryset(request.user, models.Team)
@@ -296,6 +309,9 @@ class DashboardJobsGraphView(APIView):
         start_date = now()
         if period == 'month':
             end_date = start_date - dateutil.relativedelta.relativedelta(months=1)
+            interval = 'days'
+        elif period == 'two_weeks':
+            end_date = start_date - dateutil.relativedelta.relativedelta(weeks=2)
             interval = 'days'
         elif period == 'week':
             end_date = start_date - dateutil.relativedelta.relativedelta(weeks=1)
@@ -1337,6 +1353,13 @@ class CredentialDetail(RetrieveUpdateDestroyAPIView):
     model = models.Credential
     serializer_class = serializers.CredentialSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.managed_by_tower:
+            raise PermissionDenied(detail=_("Deletion not allowed for managed credentials"))
+        return super(CredentialDetail, self).destroy(request, *args, **kwargs)
+
+
 
 class CredentialActivityStreamList(SubListAPIView):
 
@@ -1397,10 +1420,18 @@ class CredentialExternalTest(SubDetailAPIView):
             obj.credential_type.plugin.backend(**backend_kwargs)
             return Response({}, status=status.HTTP_202_ACCEPTED)
         except requests.exceptions.HTTPError as exc:
-            message = 'HTTP {}\n{}'.format(exc.response.status_code, exc.response.text)
+            message = 'HTTP {}'.format(exc.response.status_code)
             return Response({'inputs': message}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
-            return Response({'inputs': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            message = exc.__class__.__name__
+            args = getattr(exc, 'args', [])
+            for a in args:
+                if isinstance(
+                    getattr(a, 'reason', None),
+                    ConnectTimeoutError
+                ):
+                    message = str(a.reason)
+            return Response({'inputs': message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CredentialInputSourceDetail(RetrieveUpdateDestroyAPIView):
@@ -1449,10 +1480,18 @@ class CredentialTypeExternalTest(SubDetailAPIView):
             obj.plugin.backend(**backend_kwargs)
             return Response({}, status=status.HTTP_202_ACCEPTED)
         except requests.exceptions.HTTPError as exc:
-            message = 'HTTP {}\n{}'.format(exc.response.status_code, exc.response.text)
+            message = 'HTTP {}'.format(exc.response.status_code)
             return Response({'inputs': message}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
-            return Response({'inputs': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            message = exc.__class__.__name__
+            args = getattr(exc, 'args', [])
+            for a in args:
+                if isinstance(
+                    getattr(a, 'reason', None),
+                    ConnectTimeoutError
+                ):
+                    message = str(a.reason)
+            return Response({'inputs': message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class HostRelatedSearchMixin(object):
@@ -3001,7 +3040,7 @@ class WorkflowJobTemplateNodeCreateApproval(RetrieveAPIView):
             approval_template,
             context=self.get_serializer_context()
         ).data
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(data, status=status.HTTP_201_CREATED)
 
     def check_permissions(self, request):
         obj = self.get_object().workflow_job_template
@@ -4211,7 +4250,9 @@ class NotificationTemplateDetail(RetrieveUpdateDestroyAPIView):
         obj = self.get_object()
         if not request.user.can_access(self.model, 'delete', obj):
             return Response(status=status.HTTP_404_NOT_FOUND)
-        if obj.notifications.filter(status='pending').exists():
+
+        hours_old = now() - dateutil.relativedelta.relativedelta(hours=8)
+        if obj.notifications.filter(status='pending', created__gt=hours_old).exists():
             return Response({"error": _("Delete not allowed while there are pending notifications")},
                             status=status.HTTP_405_METHOD_NOT_ALLOWED)
         return super(NotificationTemplateDetail, self).delete(request, *args, **kwargs)

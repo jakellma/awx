@@ -9,7 +9,11 @@ import useRequest, { useDeleteItems } from '../../../util/useRequest';
 import AlertModal from '../../../components/AlertModal';
 import DataListToolbar from '../../../components/DataListToolbar';
 import ErrorDetail from '../../../components/ErrorDetail';
-import PaginatedDataList, {
+import PaginatedTable, {
+  HeaderRow,
+  HeaderCell,
+} from '../../../components/PaginatedTable';
+import {
   ToolbarAddButton,
   ToolbarDeleteButton,
 } from '../../../components/PaginatedDataList';
@@ -29,7 +33,13 @@ function TeamList({ i18n }) {
   const [selected, setSelected] = useState([]);
 
   const {
-    result: { teams, itemCount, actions },
+    result: {
+      teams,
+      itemCount,
+      actions,
+      relatedSearchableKeys,
+      searchableKeys,
+    },
     error: contentError,
     isLoading,
     request: fetchTeams,
@@ -44,12 +54,20 @@ function TeamList({ i18n }) {
         teams: response.data.results,
         itemCount: response.data.count,
         actions: actionsResponse.data.actions,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse.data.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
       };
     }, [location]),
     {
       teams: [],
       itemCount: 0,
       actions: {},
+      relatedSearchableKeys: [],
+      searchableKeys: [],
     }
   );
 
@@ -64,7 +82,7 @@ function TeamList({ i18n }) {
     deletionError,
     clearDeletionError,
   } = useDeleteItems(
-    useCallback(async () => {
+    useCallback(() => {
       return Promise.all(selected.map(team => TeamsAPI.destroy(team.id)));
     }, [selected]),
     {
@@ -98,7 +116,7 @@ function TeamList({ i18n }) {
     <Fragment>
       <PageSection>
         <Card>
-          <PaginatedDataList
+          <PaginatedTable
             contentError={contentError}
             hasContentLoading={hasContentLoading}
             items={teams}
@@ -109,28 +127,35 @@ function TeamList({ i18n }) {
             toolbarSearchColumns={[
               {
                 name: i18n._(t`Name`),
-                key: 'name',
+                key: 'name__icontains',
                 isDefault: true,
               },
               {
+                name: i18n._(t`Description`),
+                key: 'description__icontains',
+              },
+              {
                 name: i18n._(t`Organization Name`),
-                key: 'organization__name',
+                key: 'organization__name__icontains',
               },
               {
                 name: i18n._(t`Created By (Username)`),
-                key: 'created_by__username',
+                key: 'created_by__username__icontains',
               },
               {
                 name: i18n._(t`Modified By (Username)`),
-                key: 'modified_by__username',
+                key: 'modified_by__username__icontains',
               },
             ]}
-            toolbarSortColumns={[
-              {
-                name: i18n._(t`Name`),
-                key: 'name',
-              },
-            ]}
+            toolbarSearchableKeys={searchableKeys}
+            toolbarRelatedSearchableKeys={relatedSearchableKeys}
+            headerRow={
+              <HeaderRow qsConfig={QS_CONFIG}>
+                <HeaderCell sortKey="name">{i18n._(t`Name`)}</HeaderCell>
+                <HeaderCell>{i18n._(t`Organization`)}</HeaderCell>
+                <HeaderCell>{i18n._(t`Actions`)}</HeaderCell>
+              </HeaderRow>
+            }
             renderToolbar={props => (
               <DataListToolbar
                 {...props}
@@ -156,13 +181,14 @@ function TeamList({ i18n }) {
                 ]}
               />
             )}
-            renderItem={o => (
+            renderRow={(team, index) => (
               <TeamListItem
-                key={o.id}
-                team={o}
-                detailUrl={`${match.url}/${o.id}`}
-                isSelected={selected.some(row => row.id === o.id)}
-                onSelect={() => handleSelect(o)}
+                key={team.id}
+                team={team}
+                detailUrl={`${match.url}/${team.id}`}
+                isSelected={selected.some(row => row.id === team.id)}
+                onSelect={() => handleSelect(team)}
+                rowIndex={index}
               />
             )}
             emptyStateControls={

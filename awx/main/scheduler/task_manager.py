@@ -7,15 +7,20 @@ import logging
 import uuid
 import json
 import random
+from types import SimpleNamespace
 
 # Django
 from django.db import transaction, connection
 from django.utils.translation import ugettext_lazy as _, gettext_noop
 from django.utils.timezone import now as tz_now
+from django.conf import settings
+from django.db.models import Q
 
 # AWX
+from awx.main.dispatch.reaper import reap_job
 from awx.main.models import (
     AdHocCommand,
+    Instance,
     InstanceGroup,
     InventorySource,
     InventoryUpdate,
@@ -42,24 +47,64 @@ logger = logging.getLogger('awx.main.scheduler')
 class TaskManager():
 
     def __init__(self):
-        self.graph = dict()
-        for rampart_group in InstanceGroup.objects.prefetch_related('instances'):
-            self.graph[rampart_group.name] = dict(graph=DependencyGraph(rampart_group.name),
-                                                  capacity_total=rampart_group.capacity,
-                                                  consumed_capacity=0)
+        '''
+        Do NOT put database queries or other potentially expensive operations
+        in the task manager init. The task manager object is created every time a
+        job is created, transitions state, and every 30 seconds on each tower node.
+        More often then not, the object is destroyed quickly because the NOOP case is hit.
 
-    def is_job_blocked(self, task):
+        The NOOP case is short-circuit logic. If the task manager realizes that another instance
+        of the task manager is already running, then it short-circuits and decides not to run.
+        '''
+        self.graph = dict()
+        # start task limit indicates how many pending jobs can be started on this
+        # .schedule() run. Starting jobs is expensive, and there is code in place to reap
+        # the task manager after 5 minutes. At scale, the task manager can easily take more than
+        # 5 minutes to start pending jobs. If this limit is reached, pending jobs
+        # will no longer be started and will be started on the next task manager cycle.
+        self.start_task_limit = settings.START_TASK_LIMIT
+
+        self.time_delta_job_explanation = timedelta(seconds=30)
+
+    def after_lock_init(self):
+        '''
+        Init AFTER we know this instance of the task manager will run because the lock is acquired.
+        '''
+        instances = Instance.objects.filter(~Q(hostname=None), capacity__gt=0, enabled=True)
+        self.real_instances = {i.hostname: i for i in instances}
+
+        instances_partial = [SimpleNamespace(obj=instance,
+                                             remaining_capacity=instance.remaining_capacity,
+                                             capacity=instance.capacity,
+                                             jobs_running=instance.jobs_running,
+                                             hostname=instance.hostname) for instance in instances]
+
+        instances_by_hostname = {i.hostname: i for i in instances_partial}
+
+        for rampart_group in InstanceGroup.objects.prefetch_related('instances'):
+            self.graph[rampart_group.name] = dict(graph=DependencyGraph(),
+                                                  capacity_total=rampart_group.capacity,
+                                                  consumed_capacity=0,
+                                                  instances=[])
+            for instance in rampart_group.instances.filter(capacity__gt=0, enabled=True).order_by('hostname'):
+                if instance.hostname in instances_by_hostname:
+                    self.graph[rampart_group.name]['instances'].append(instances_by_hostname[instance.hostname])
+
+    def job_blocked_by(self, task):
         # TODO: I'm not happy with this, I think blocking behavior should be decided outside of the dependency graph
         #       in the old task manager this was handled as a method on each task object outside of the graph and
         #       probably has the side effect of cutting down *a lot* of the logic from this task manager class
         for g in self.graph:
-            if self.graph[g]['graph'].is_job_blocked(task):
-                return True
+            blocked_by = self.graph[g]['graph'].task_blocked_by(task)
+            if blocked_by:
+                return blocked_by
 
         if not task.dependent_jobs_finished():
-            return True
+            blocked_by = task.dependent_jobs.first()
+            if blocked_by:
+                return blocked_by
 
-        return False
+        return None
 
     def get_tasks(self, status_list=('pending', 'waiting', 'running')):
         jobs = [j for j in Job.objects.filter(status__in=status_list).prefetch_related('instance_group')]
@@ -187,6 +232,10 @@ class TaskManager():
         return result
 
     def start_task(self, task, rampart_group, dependent_tasks=None, instance=None):
+        self.start_task_limit -= 1
+        if self.start_task_limit == 0:
+            # schedule another run immediately after this task manager
+            schedule_task_manager()
         from awx.main.tasks import handle_work_error, handle_work_success
 
         dependent_tasks = dependent_tasks or []
@@ -241,7 +290,7 @@ class TaskManager():
                 for group in InstanceGroup.objects.all():
                     if group.is_containerized or group.controller_id:
                         continue
-                    match = group.fit_task_to_most_remaining_capacity_instance(task)
+                    match = group.fit_task_to_most_remaining_capacity_instance(task, group.instances.all())
                     if match:
                         break
                 task.instance_group = rampart_group
@@ -268,6 +317,7 @@ class TaskManager():
             with disable_activity_stream():
                 task.celery_task_id = str(uuid.uuid4())
                 task.save()
+                task.log_lifecycle("waiting")
 
             if rampart_group is not None:
                 self.consume_capacity(task, rampart_group.name)
@@ -406,6 +456,7 @@ class TaskManager():
     def generate_dependencies(self, undeped_tasks):
         created_dependencies = []
         for task in undeped_tasks:
+            task.log_lifecycle("acknowledged")
             dependencies = []
             if not type(task) is Job:
                 continue
@@ -445,13 +496,21 @@ class TaskManager():
 
     def process_pending_tasks(self, pending_tasks):
         running_workflow_templates = set([wf.unified_job_template_id for wf in self.get_running_workflow_jobs()])
+        tasks_to_update_job_explanation = []
         for task in pending_tasks:
-            if self.is_job_blocked(task):
-                logger.debug("{} is blocked from running".format(task.log_format))
+            if self.start_task_limit <= 0:
+                break
+            blocked_by = self.job_blocked_by(task)
+            if blocked_by:
+                task.log_lifecycle("blocked", blocked_by=blocked_by)
+                job_explanation = gettext_noop(f"waiting for {blocked_by._meta.model_name}-{blocked_by.id} to finish")
+                if task.job_explanation != job_explanation:
+                    if task.created < (tz_now() - self.time_delta_job_explanation):
+                        task.job_explanation  = job_explanation
+                        tasks_to_update_job_explanation.append(task)
                 continue
             preferred_instance_groups = task.preferred_instance_groups
             found_acceptable_queue = False
-            idle_instance_that_fits = None
             if isinstance(task, WorkflowJob):
                 if task.unified_job_template_id in running_workflow_templates:
                     if not task.allow_simultaneous:
@@ -468,24 +527,24 @@ class TaskManager():
                     found_acceptable_queue = True
                     break
 
-                if idle_instance_that_fits is None:
-                    idle_instance_that_fits = rampart_group.find_largest_idle_instance()
                 remaining_capacity = self.get_remaining_capacity(rampart_group.name)
                 if not rampart_group.is_containerized and self.get_remaining_capacity(rampart_group.name) <= 0:
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue
 
-                execution_instance = rampart_group.fit_task_to_most_remaining_capacity_instance(task)
-                if execution_instance:
-                    logger.debug("Starting {} in group {} instance {} (remaining_capacity={})".format(
-                                 task.log_format, rampart_group.name, execution_instance.hostname, remaining_capacity))
-                elif not execution_instance and idle_instance_that_fits:
+                execution_instance = InstanceGroup.fit_task_to_most_remaining_capacity_instance(task, self.graph[rampart_group.name]['instances']) or \
+                    InstanceGroup.find_largest_idle_instance(self.graph[rampart_group.name]['instances'])
+
+                if execution_instance or rampart_group.is_containerized:
                     if not rampart_group.is_containerized:
-                        execution_instance = idle_instance_that_fits
+                        execution_instance.remaining_capacity = max(0, execution_instance.remaining_capacity - task.task_impact)
+                        execution_instance.jobs_running += 1
                         logger.debug("Starting {} in group {} instance {} (remaining_capacity={})".format(
                                      task.log_format, rampart_group.name, execution_instance.hostname, remaining_capacity))
-                if execution_instance or rampart_group.is_containerized:
+
+                    if execution_instance:
+                        execution_instance = self.real_instances[execution_instance.hostname]
                     self.graph[rampart_group.name]['graph'].add_job(task)
                     self.start_task(task, rampart_group, task.get_jobs_fail_chain(), execution_instance)
                     found_acceptable_queue = True
@@ -494,7 +553,17 @@ class TaskManager():
                     logger.debug("No instance available in group {} to run job {} w/ capacity requirement {}".format(
                                  rampart_group.name, task.log_format, task.task_impact))
             if not found_acceptable_queue:
+                task.log_lifecycle("needs_capacity")
+                job_explanation = gettext_noop("This job is not ready to start because there is not enough available capacity.")
+                if task.job_explanation != job_explanation:
+                    if task.created < (tz_now() - self.time_delta_job_explanation):
+                        # Many launched jobs are immediately blocked, but most blocks will resolve in a few seconds.
+                        # Therefore we should only update the job_explanation after some time has elapsed to
+                        # prevent excessive task saves.
+                        task.job_explanation = job_explanation
+                        tasks_to_update_job_explanation.append(task)
                 logger.debug("{} couldn't be scheduled on graph, waiting for next cycle".format(task.log_format))
+        UnifiedJob.objects.bulk_update(tasks_to_update_job_explanation, ['job_explanation'])
 
     def timeout_approval_node(self):
         workflow_approvals = WorkflowApproval.objects.filter(status='pending')
@@ -514,6 +583,20 @@ class TaskManager():
                 task.websocket_emit_status(task.status)
                 task.job_explanation = timeout_message
                 task.save(update_fields=['status', 'job_explanation', 'timed_out'])
+
+    def reap_jobs_from_orphaned_instances(self):
+        # discover jobs that are in running state but aren't on an execution node
+        # that we know about; this is a fairly rare event, but it can occur if you,
+        # for example, SQL backup an awx install with running jobs and restore it
+        # elsewhere
+        for j in UnifiedJob.objects.filter(
+            status__in=['pending', 'waiting', 'running'],
+        ).exclude(
+            execution_node__in=Instance.objects.values_list('hostname', flat=True)
+        ):
+            if j.execution_node and not j.is_containerized:
+                logger.error(f'{j.execution_node} is not a registered instance; reaping {j.log_format}')
+                reap_job(j, 'failed')
 
     def calculate_capacity_consumed(self, tasks):
         self.graph = InstanceGroup.objects.capacity_values(tasks=tasks, graph=self.graph)
@@ -543,6 +626,9 @@ class TaskManager():
     def _schedule(self):
         finished_wfjs = []
         all_sorted_tasks = self.get_tasks()
+
+        self.after_lock_init()
+
         if len(all_sorted_tasks) > 0:
             # TODO: Deal with
             # latest_project_updates = self.get_latest_project_update_tasks(all_sorted_tasks)
@@ -567,6 +653,7 @@ class TaskManager():
             self.spawn_workflow_graph_jobs(running_workflow_tasks)
 
             self.timeout_approval_node()
+            self.reap_jobs_from_orphaned_instances()
 
             self.process_tasks(all_sorted_tasks)
         return finished_wfjs

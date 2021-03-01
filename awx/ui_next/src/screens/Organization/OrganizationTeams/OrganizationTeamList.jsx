@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { useLocation } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
@@ -6,6 +6,7 @@ import { t } from '@lingui/macro';
 import { OrganizationsAPI } from '../../../api';
 import PaginatedDataList from '../../../components/PaginatedDataList';
 import { getQSConfig, parseQueryString } from '../../../util/qs';
+import useRequest from '../../../util/useRequest';
 import OrganizationTeamListItem from './OrganizationTeamListItem';
 
 const QS_CONFIG = getQSConfig('team', {
@@ -16,53 +17,63 @@ const QS_CONFIG = getQSConfig('team', {
 
 function OrganizationTeamList({ id, i18n }) {
   const location = useLocation();
-  const [contentError, setContentError] = useState(null);
-  const [hasContentLoading, setHasContentLoading] = useState(false);
-  const [itemCount, setItemCount] = useState(0);
-  const [teams, setTeams] = useState([]);
+
+  const {
+    result: { teams, count, relatedSearchableKeys, searchableKeys },
+    error,
+    isLoading,
+    request: fetchTeams,
+  } = useRequest(
+    useCallback(async () => {
+      const params = parseQueryString(QS_CONFIG, location.search);
+      const [response, actionsResponse] = await Promise.all([
+        OrganizationsAPI.readTeams(id, params),
+        OrganizationsAPI.readTeamsOptions(id),
+      ]);
+      return {
+        teams: response.data.results,
+        count: response.data.count,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse.data.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
+      };
+    }, [id, location]),
+    {
+      teams: [],
+      count: 0,
+      relatedSearchableKeys: [],
+      searchableKeys: [],
+    }
+  );
 
   useEffect(() => {
-    (async () => {
-      const params = parseQueryString(QS_CONFIG, location.search);
-      setContentError(null);
-      setHasContentLoading(true);
-      try {
-        const {
-          data: { count = 0, results = [] },
-        } = await OrganizationsAPI.readTeams(id, params);
-        setItemCount(count);
-        setTeams(
-          results.map(team => ({ ...team, url: `/teams/${team.id}/details` }))
-        );
-      } catch (error) {
-        setContentError(error);
-      } finally {
-        setHasContentLoading(false);
-      }
-    })();
-  }, [id, location]);
+    fetchTeams();
+  }, [fetchTeams]);
 
   return (
     <PaginatedDataList
-      contentError={contentError}
-      hasContentLoading={hasContentLoading}
+      contentError={error}
+      hasContentLoading={isLoading}
       items={teams}
-      itemCount={itemCount}
+      itemCount={count}
       pluralizedItemName={i18n._(t`Teams`)}
       qsConfig={QS_CONFIG}
       toolbarSearchColumns={[
         {
           name: i18n._(t`Name`),
-          key: 'name',
+          key: 'name__icontains',
           isDefault: true,
         },
         {
           name: i18n._(t`Created by (username)`),
-          key: 'created_by__username',
+          key: 'created_by__username__icontains',
         },
         {
           name: i18n._(t`Modified by (username)`),
-          key: 'modified_by__username',
+          key: 'modified_by__username__icontains',
         },
       ]}
       toolbarSortColumns={[
@@ -71,6 +82,8 @@ function OrganizationTeamList({ id, i18n }) {
           key: 'name',
         },
       ]}
+      toolbarSearchableKeys={searchableKeys}
+      toolbarRelatedSearchableKeys={relatedSearchableKeys}
       renderItem={item => (
         <OrganizationTeamListItem
           key={item.id}

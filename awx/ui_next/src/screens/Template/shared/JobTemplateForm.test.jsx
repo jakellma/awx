@@ -14,6 +14,7 @@ import {
   ProjectsAPI,
   CredentialsAPI,
   CredentialTypesAPI,
+  InventoriesAPI,
 } from '../../../api';
 
 jest.mock('../../../api');
@@ -55,6 +56,7 @@ describe('<JobTemplateForm />', () => {
     webhook_key: 'webhook key',
     webhook_service: 'github',
     webhook_credential: 7,
+    host_config_key: '',
   };
   const mockInstanceGroups = [
     {
@@ -111,13 +113,22 @@ describe('<JobTemplateForm />', () => {
     JobTemplatesAPI.updateWebhookKey.mockReturnValue({
       data: { webhook_key: 'webhook key' },
     });
-    ProjectsAPI.readPlaybooks.mockReturnValue({
-      data: ['debug.yml'],
+    JobTemplatesAPI.updateWebhookKey.mockReturnValue({
+      data: { webhook_key: 'webhook key' },
     });
     ProjectsAPI.readDetail.mockReturnValue({
       name: 'foo',
       id: 1,
       allow_override: true,
+    });
+    ProjectsAPI.readPlaybooks.mockReturnValue({
+      data: ['debug.yml'],
+    });
+    InventoriesAPI.readOptions.mockResolvedValue({
+      data: { actions: { GET: {}, POST: {} } },
+    });
+    ProjectsAPI.readOptions.mockResolvedValue({
+      data: { actions: { GET: {}, POST: {} } },
     });
   });
 
@@ -189,9 +200,12 @@ describe('<JobTemplateForm />', () => {
         'devel'
       );
       wrapper.find('TextInputBase#template-limit').prop('onChange')(1234567890);
-      wrapper.find('AnsibleSelect[name="playbook"]').simulate('change', {
-        target: { value: 'new baz type', name: 'playbook' },
-      });
+      wrapper.find('Select#template-playbook').prop('onToggle')();
+      wrapper.update();
+      wrapper.find('Select#template-playbook').prop('onSelect')(
+        null,
+        'new baz type'
+      );
     });
 
     await act(async () => {
@@ -226,9 +240,9 @@ describe('<JobTemplateForm />', () => {
     expect(wrapper.find('input#template-limit').prop('value')).toEqual(
       1234567890
     );
-    expect(
-      wrapper.find('AnsibleSelect[name="playbook"]').prop('value')
-    ).toEqual('new baz type');
+    expect(wrapper.find('Select#template-playbook').prop('selections')).toEqual(
+      'new baz type'
+    );
     expect(wrapper.find('MultiCredentialsLookup').prop('value')).toEqual([
       {
         id: 2,
@@ -282,10 +296,14 @@ describe('<JobTemplateForm />', () => {
     ).toBe(true);
 
     expect(
-      wrapper.find('input[aria-label="wfjt-webhook-key"]').prop('readOnly')
+      wrapper
+        .find('input[aria-label="workflow job template webhook key"]')
+        .prop('readOnly')
     ).toBe(true);
     expect(
-      wrapper.find('input[aria-label="wfjt-webhook-key"]').prop('value')
+      wrapper
+        .find('input[aria-label="workflow job template webhook key"]')
+        .prop('value')
     ).toBe('webhook key');
     await act(() =>
       wrapper.find('Button[aria-label="Update webhook key"]').prop('onClick')()

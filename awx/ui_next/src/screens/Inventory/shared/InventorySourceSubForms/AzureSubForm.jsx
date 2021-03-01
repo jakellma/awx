@@ -1,19 +1,36 @@
-import React from 'react';
-import { useField } from 'formik';
+import React, { useCallback } from 'react';
+import { useField, useFormikContext } from 'formik';
 import { withI18n } from '@lingui/react';
-import { t } from '@lingui/macro';
+import { t, Trans } from '@lingui/macro';
 import CredentialLookup from '../../../../components/Lookup/CredentialLookup';
 import {
   OptionsField,
-  RegionsField,
   SourceVarsField,
   VerbosityField,
+  EnabledVarField,
+  EnabledValueField,
+  HostFilterField,
 } from './SharedFields';
+import { required } from '../../../../util/validators';
 
-const AzureSubForm = ({ i18n, sourceOptions }) => {
-  const [credentialField, credentialMeta, credentialHelpers] = useField(
-    'credential'
+const AzureSubForm = ({ autoPopulateCredential, i18n }) => {
+  const { setFieldValue } = useFormikContext();
+  const [credentialField, credentialMeta, credentialHelpers] = useField({
+    name: 'credential',
+    validate: required(i18n._(t`Select a value for this field`), i18n),
+  });
+
+  const handleCredentialUpdate = useCallback(
+    value => {
+      setFieldValue('credential', value);
+    },
+    [setFieldValue]
   );
+
+  const pluginLink =
+    'http://docs.ansible.com/ansible-tower/latest/html/userguide/inventories.html#inventory-plugins';
+  const configLink =
+    'https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_inventory.html';
 
   return (
     <>
@@ -23,20 +40,36 @@ const AzureSubForm = ({ i18n, sourceOptions }) => {
         helperTextInvalid={credentialMeta.error}
         isValid={!credentialMeta.touched || !credentialMeta.error}
         onBlur={() => credentialHelpers.setTouched()}
-        onChange={value => {
-          credentialHelpers.setValue(value);
-        }}
+        onChange={handleCredentialUpdate}
         value={credentialField.value}
         required
-      />
-      <RegionsField
-        regionOptions={
-          sourceOptions?.actions?.POST?.source_regions?.azure_rm_region_choices
-        }
+        autoPopulate={autoPopulateCredential}
       />
       <VerbosityField />
+      <HostFilterField />
+      <EnabledVarField />
+      <EnabledValueField />
       <OptionsField />
-      <SourceVarsField />
+      <SourceVarsField
+        popoverContent={
+          <>
+            <Trans>
+              Enter variables to configure the inventory source. For a detailed
+              description of how to configure this plugin, see{' '}
+              <a href={pluginLink} target="_blank" rel="noopener noreferrer">
+                Inventory Plugins
+              </a>{' '}
+              in the documentation and the{' '}
+              <a href={configLink} target="_blank" rel="noopener noreferrer">
+                azure_rm
+              </a>{' '}
+              plugin configuration guide.
+            </Trans>
+            <br />
+            <br />
+          </>
+        }
+      />
     </>
   );
 };

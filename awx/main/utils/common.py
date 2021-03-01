@@ -45,7 +45,7 @@ __all__ = [
     'get_object_or_400', 'camelcase_to_underscore', 'underscore_to_camelcase', 'memoize',
     'memoize_delete', 'get_ansible_version', 'get_licenser', 'get_awx_http_client_headers',
     'get_awx_version', 'update_scm_url', 'get_type_for_model', 'get_model_for_type',
-    'copy_model_by_class', 'region_sorting', 'copy_m2m_relationships',
+    'copy_model_by_class', 'copy_m2m_relationships',
     'prefetch_page_capabilities', 'to_python_boolean', 'ignore_inventory_computed_fields',
     'ignore_inventory_group_removal', '_inventory_updates', 'get_pk_from_dict', 'getattrd',
     'getattr_dne', 'NoDefaultProvided', 'get_current_apps', 'set_current_apps',
@@ -55,8 +55,7 @@ __all__ = [
     'model_instance_diff', 'parse_yaml_or_json', 'RequireDebugTrueOrTest',
     'has_model_field_prefetched', 'set_environ', 'IllegalArgumentError',
     'get_custom_venv_choices', 'get_external_account', 'task_manager_bulk_reschedule',
-    'schedule_task_manager', 'classproperty', 'create_temporary_fifo', 'truncate_stdout',
-    'StubLicense'
+    'schedule_task_manager', 'classproperty', 'create_temporary_fifo', 'truncate_stdout'
 ]
 
 
@@ -85,15 +84,6 @@ def to_python_boolean(value, allow_none=False):
         return None
     else:
         raise ValueError(_(u'Unable to convert "%s" to boolean') % value)
-
-
-def region_sorting(region):
-    # python3's removal of sorted(cmp=...) is _stupid_
-    if region[1].lower() == 'all':
-        return ''
-    elif region[1].lower().startswith('us'):
-        return region[1]
-    return 'ZZZ' + str(region[1])
 
 
 def camelcase_to_underscore(s):
@@ -171,23 +161,19 @@ def memoize_delete(function_name):
     return cache.delete(function_name)
 
 
-def _get_ansible_version(ansible_path):
+@memoize()
+def get_ansible_version():
     '''
     Return Ansible version installed.
     Ansible path needs to be provided to account for custom virtual environments
     '''
     try:
-        proc = subprocess.Popen([ansible_path, '--version'],
+        proc = subprocess.Popen(['ansible', '--version'],
                                 stdout=subprocess.PIPE)
         result = smart_str(proc.communicate()[0])
         return result.split('\n')[0].replace('ansible', '').strip()
     except Exception:
         return 'unknown'
-
-
-@memoize()
-def get_ansible_version():
-    return _get_ansible_version('ansible')
 
 
 def get_awx_version():
@@ -203,7 +189,7 @@ def get_awx_version():
 
 
 def get_awx_http_client_headers():
-    license = get_license(show_key=False).get('license_type', 'UNLICENSED')
+    license = get_license().get('license_type', 'UNLICENSED')
     headers = {
         'Content-Type': 'application/json',
         'User-Agent': '{} {} ({})'.format(
@@ -215,34 +201,15 @@ def get_awx_http_client_headers():
     return headers
 
 
-class StubLicense(object):
-
-    features = {
-        'activity_streams': True,
-        'ha': True,
-        'ldap': True,
-        'multiple_organizations': True,
-        'surveys': True,
-        'system_tracking': True,
-        'rebranding': True,
-        'enterprise_auth': True,
-        'workflows': True,
-    }
-
-    def validate(self):
-        return dict(license_key='OPEN',
-                    valid_key=True,
-                    compliant=True,
-                    features=self.features,
-                    license_type='open')
-
-
 def get_licenser(*args, **kwargs):
+    from awx.main.utils.licensing import Licenser, OpenLicense
     try:
-        from tower_license import TowerLicense
-        return TowerLicense(*args, **kwargs)
-    except ImportError:
-        return StubLicense(*args, **kwargs)
+        if os.path.exists('/var/lib/awx/.tower_version'):
+            return Licenser(*args, **kwargs)
+        else:
+            return OpenLicense()
+    except Exception as e:
+        raise ValueError(_('Error importing Tower License: %s') % e)
 
 
 def update_scm_url(scm_type, url, username=True, password=True,
@@ -255,9 +222,8 @@ def update_scm_url(scm_type, url, username=True, password=True,
     '''
     # Handle all of the URL formats supported by the SCM systems:
     # git: https://www.kernel.org/pub/software/scm/git/docs/git-clone.html#URLS
-    # hg: http://www.selenic.com/mercurial/hg.1.html#url-paths
     # svn: http://svnbook.red-bean.com/en/1.7/svn-book.html#svn.advanced.reposurls
-    if scm_type not in ('git', 'hg', 'svn', 'insights'):
+    if scm_type not in ('git', 'svn', 'insights', 'archive'):
         raise ValueError(_('Unsupported SCM type "%s"') % str(scm_type))
     if not url.strip():
         return ''
@@ -289,8 +255,8 @@ def update_scm_url(scm_type, url, username=True, password=True,
             # SCP style before passed to git module.
             parts = urllib.parse.urlsplit('git+ssh://%s' % modified_url)
         # Handle local paths specified without file scheme (e.g. /path/to/foo).
-        # Only supported by git and hg.
-        elif scm_type in ('git', 'hg'):
+        # Only supported by git.
+        elif scm_type == 'git':
             if not url.startswith('/'):
                 parts = urllib.parse.urlsplit('file:///%s' % url)
             else:
@@ -301,9 +267,9 @@ def update_scm_url(scm_type, url, username=True, password=True,
     # Validate that scheme is valid for given scm_type.
     scm_type_schemes = {
         'git': ('ssh', 'git', 'git+ssh', 'http', 'https', 'ftp', 'ftps', 'file'),
-        'hg': ('http', 'https', 'ssh', 'file'),
         'svn': ('http', 'https', 'svn', 'svn+ssh', 'file'),
-        'insights': ('http', 'https')
+        'insights': ('http', 'https'),
+        'archive': ('http', 'https'),
     }
     if parts.scheme not in scm_type_schemes.get(scm_type, ()):
         raise ValueError(_('Unsupported %s URL') % scm_type)
@@ -332,14 +298,8 @@ def update_scm_url(scm_type, url, username=True, password=True,
         if scm_type == 'git' and parts.scheme.endswith('ssh') and parts.hostname in special_git_hosts and netloc_password:
             #raise ValueError('Password not allowed for SSH access to %s.' % parts.hostname)
             netloc_password = ''
-        special_hg_hosts = ('bitbucket.org', 'altssh.bitbucket.org')
-        if scm_type == 'hg' and parts.scheme == 'ssh' and parts.hostname in special_hg_hosts and netloc_username != 'hg':
-            raise ValueError(_('Username must be "hg" for SSH access to %s.') % parts.hostname)
-        if scm_type == 'hg' and parts.scheme == 'ssh' and netloc_password:
-            #raise ValueError('Password not supported for SSH with Mercurial.')
-            netloc_password = ''
 
-    if netloc_username and parts.scheme != 'file' and scm_type != "insights":
+    if netloc_username and parts.scheme != 'file' and scm_type not in ("insights", "archive"):
         netloc = u':'.join([urllib.parse.quote(x,safe='') for x in (netloc_username, netloc_password) if x])
     else:
         netloc = u''

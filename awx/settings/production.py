@@ -30,10 +30,6 @@ SECRET_KEY = None
 # See https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = []
 
-# Absolute filesystem path to the directory for job status stdout
-# This directory should not be web-accessible
-JOBOUTPUT_ROOT = '/var/lib/awx/job_status/'
-
 # The heartbeat file for the tower scheduler
 SCHEDULE_METADATA_LOCATION = '/var/lib/awx/.tower_cycle'
 
@@ -45,15 +41,6 @@ ANSIBLE_VENV_PATH = os.path.join(BASE_VENV_PATH, "ansible")
 AWX_VENV_PATH = os.path.join(BASE_VENV_PATH, "awx")
 
 AWX_ISOLATED_USERNAME = 'awx'
-
-LOGGING['handlers']['tower_warnings']['filename'] = '/var/log/tower/tower.log'  # noqa
-LOGGING['handlers']['callback_receiver']['filename'] = '/var/log/tower/callback_receiver.log'  # noqa
-LOGGING['handlers']['dispatcher']['filename'] = '/var/log/tower/dispatcher.log'  # noqa
-LOGGING['handlers']['wsbroadcast']['filename'] = '/var/log/tower/wsbroadcast.log'  # noqa
-LOGGING['handlers']['task_system']['filename'] = '/var/log/tower/task_system.log'  # noqa
-LOGGING['handlers']['management_playbooks']['filename'] = '/var/log/tower/management_playbooks.log'  # noqa
-LOGGING['handlers']['system_tracking_migrations']['filename'] = '/var/log/tower/tower_system_tracking_migrations.log'  # noqa
-LOGGING['handlers']['rbac_migrations']['filename'] = '/var/log/tower/tower_rbac_migrations.log'  # noqa
 
 # Store a snapshot of default settings at this point before loading any
 # customizable config files.
@@ -102,6 +89,7 @@ except IOError:
     else:
         raise
 
+# The below runs AFTER all of the custom settings are imported.
 
 CELERYBEAT_SCHEDULE.update({  # noqa
     'isolated_heartbeat': {
@@ -110,3 +98,5 @@ CELERYBEAT_SCHEDULE.update({  # noqa
         'options': {'expires': AWX_ISOLATED_PERIODIC_CHECK * 2},  # noqa
     }
 })
+
+DATABASES['default'].setdefault('OPTIONS', dict()).setdefault('application_name', f'{CLUSTER_HOST_ID}-{os.getpid()}-{" ".join(sys.argv)}'[:63]) # noqa

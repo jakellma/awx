@@ -620,7 +620,7 @@ class WorkflowJob(UnifiedJob, WorkflowJobOptions, SurveyJobMixin, JobNotificatio
         return reverse('api:workflow_job_detail', kwargs={'pk': self.pk}, request=request)
 
     def get_ui_url(self):
-        return urljoin(settings.TOWER_URL_BASE, '/#/workflows/{}'.format(self.pk))
+        return urljoin(settings.TOWER_URL_BASE, '/#/jobs/workflow/{}'.format(self.pk))
 
     def notification_data(self):
         result = super(WorkflowJob, self).notification_data()
@@ -674,7 +674,7 @@ class WorkflowJob(UnifiedJob, WorkflowJobOptions, SurveyJobMixin, JobNotificatio
         return self.status == 'running'
 
 
-class WorkflowApprovalTemplate(UnifiedJobTemplate):
+class WorkflowApprovalTemplate(UnifiedJobTemplate, RelatedJobsMixin):
 
     FIELDS_TO_PRESERVE_AT_COPY = ['description', 'timeout',]
 
@@ -701,6 +701,12 @@ class WorkflowApprovalTemplate(UnifiedJobTemplate):
     @property
     def workflow_job_template(self):
         return self.workflowjobtemplatenodes.first().workflow_job_template
+
+    '''
+    RelatedJobsMixin
+    '''
+    def _get_related_jobs(self):
+        return UnifiedJob.objects.filter(unified_job_template=self)
 
 
 class WorkflowApproval(UnifiedJob, JobNotificationMixin):
@@ -746,7 +752,7 @@ class WorkflowApproval(UnifiedJob, JobNotificationMixin):
         return None
 
     def get_ui_url(self):
-        return urljoin(settings.TOWER_URL_BASE, '/#/workflows/{}'.format(self.workflow_job.id))
+        return urljoin(settings.TOWER_URL_BASE, '/#/jobs/workflow/{}'.format(self.workflow_job.id))
 
     def _get_parent_field_name(self):
         return 'workflow_approval_template'
@@ -775,6 +781,10 @@ class WorkflowApproval(UnifiedJob, JobNotificationMixin):
         self.save(update_fields=['started'])
         self.send_approval_notification('running')
         return can_start
+
+    @property
+    def event_processing_finished(self):
+        return True
 
     def send_approval_notification(self, approval_status):
         from awx.main.tasks import send_notifications  # avoid circular import
@@ -830,7 +840,7 @@ class WorkflowApproval(UnifiedJob, JobNotificationMixin):
         return (msg, body)
 
     def context(self, approval_status):
-        workflow_url = urljoin(settings.TOWER_URL_BASE, '/#/workflows/{}'.format(self.workflow_job.id))
+        workflow_url = urljoin(settings.TOWER_URL_BASE, '/#/jobs/workflow/{}'.format(self.workflow_job.id))
         return {'approval_status': approval_status,
                 'approval_node_name': self.workflow_approval_template.name,
                 'workflow_url': workflow_url,

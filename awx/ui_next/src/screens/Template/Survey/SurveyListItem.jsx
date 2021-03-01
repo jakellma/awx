@@ -20,10 +20,12 @@ import DataListCell from '../../../components/DataListCell';
 import ChipGroup from '../../../components/ChipGroup';
 
 const DataListAction = styled(_DataListAction)`
-  margin-left: 0;
-  margin-right: 20px;
-  padding-top: 15px;
-  padding-bottom: 15px;
+  && {
+    margin-left: 0;
+    margin-right: 20px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 `;
 const Button = styled(_Button)`
   padding-top: 0;
@@ -94,7 +96,7 @@ function SurveyListItem({
           dataListCells={[
             <DataListCell key="name">
               <>
-                <Link to={`survey/edit/${question.variable}`}>
+                <Link to={`survey/edit?question_variable=${question.variable}`}>
                   {question.question_name}
                 </Link>
                 {question.required && (
@@ -110,11 +112,11 @@ function SurveyListItem({
             </DataListCell>,
 
             <DataListCell key="type">
-              <Label>{i18n._(t`Type:`)}</Label>
+              <Label>{i18n._(t`Type`)}</Label>
               {question.type}
             </DataListCell>,
             <DataListCell key="default">
-              <Label>{i18n._(t`Default:`)}</Label>
+              <Label>{i18n._(t`Default`)}</Label>
               {[question.type].includes('password') && (
                 <span>{i18n._(t`encrypted`).toUpperCase()}</span>
               )}

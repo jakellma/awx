@@ -7,7 +7,7 @@ import {
   SelectOption,
   SelectVariant,
 } from '@patternfly/react-core';
-import { FieldTooltip } from '../../../../components/FormField';
+import Popover from '../../../../components/Popover';
 
 function BecomeMethodField({ fieldOptions, isRequired }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -35,13 +35,14 @@ function BecomeMethodField({ fieldOptions, isRequired }) {
       fieldId={`credential-${fieldOptions.id}`}
       helperTextInvalid={meta.error}
       label={fieldOptions.label}
+      labelIcon={
+        fieldOptions.help_text && <Popover content={fieldOptions.help_text} />
+      }
       isRequired={isRequired}
-      isValid={!(meta.touched && meta.error)}
+      validated={!(meta.touched && meta.error) ? 'default' : 'error'}
     >
-      {fieldOptions.help_text && (
-        <FieldTooltip content={fieldOptions.help_text} />
-      )}
       <Select
+        ouiaId={`CredentialForm-${fieldOptions.id}`}
         maxHeight={200}
         variant={SelectVariant.typeahead}
         onToggle={setIsOpen}
@@ -52,7 +53,8 @@ function BecomeMethodField({ fieldOptions, isRequired }) {
           helpers.setValue(option);
           setIsOpen(false);
         }}
-        isExpanded={isOpen}
+        isOpen={isOpen}
+        id="privilege-escalation-methods"
         selections={becomeMethodField.value}
         isCreatable
         onCreateOption={option => {

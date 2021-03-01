@@ -2,12 +2,12 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: awx
+  name: {{ kubernetes_serviceaccount_name }}
   namespace: {{ kubernetes_namespace }}
 {% if kubernetes_service_account_annotations is defined %}
   annotations:
 {% for key, value in kubernetes_service_account_annotations.items() %}
-    {{ key }}: {{ value }}
+    {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
 {% if kubernetes_image_pull_secrets is defined %}
@@ -75,7 +75,7 @@ roleRef:
   name: {{ awx_psp_name }}-role
 subjects:
 - kind: ServiceAccount
-  name: awx
+  name: {{ kubernetes_serviceaccount_name }}
   namespace: {{ kubernetes_namespace }}
 {% endif %}
 
@@ -85,6 +85,12 @@ kind: Deployment
 metadata:
   name: {{ kubernetes_deployment_name }}
   namespace: {{ kubernetes_namespace }}
+{% if kubernetes_deployment_annotations is defined %}
+  annotations:
+{% for key, value in kubernetes_deployment_annotations.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
 {% if openshift_host is defined %}
   labels:
     app: {{ kubernetes_deployment_name }}
@@ -98,14 +104,18 @@ spec:
 {% endif %}
   template:
     metadata:
+{% if kubernetes_pod_annotations is defined %}
+      annotations:
+{% for key, value in kubernetes_pod_annotations.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
       labels:
         name: {{ kubernetes_deployment_name }}-web-deploy
         service: django
         app: {{ kubernetes_deployment_name }}
     spec:
-      serviceAccountName: awx
-      securityContext:
-        fsGroup: 0
+      serviceAccountName: {{ kubernetes_serviceaccount_name }}
       terminationGracePeriodSeconds: 10
 {% if custom_venvs is defined %}
 {% set trusted_hosts = "" %}
@@ -140,7 +150,8 @@ spec:
               virtualenv -p {{ custom_venv.python | default(custom_venvs_python) }} \
                 {{ custom_venvs_path }}/{{ custom_venv.name }} &&
               source {{ custom_venvs_path }}/{{ custom_venv.name }}/bin/activate &&
-              {{ custom_venvs_path }}/{{ custom_venv.name }}/bin/pip install {{ trusted_hosts }} -U psutil \
+              {{ custom_venvs_path }}/{{ custom_venv.name }}/bin/pip install {{ trusted_hosts }} -U pip &&
+              {{ custom_venvs_path }}/{{ custom_venv.name }}/bin/pip install {{ trusted_hosts }} -U psutil  \
                 "ansible=={{ custom_venv.python_ansible_version }}" &&
 {% if custom_venv.python_modules is defined %}
               {{ custom_venvs_path }}/{{ custom_venv.name }}/bin/pip install {{ trusted_hosts }} -U \
@@ -171,6 +182,12 @@ spec:
               value: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 {% endif %}
           volumeMounts:
+{% if postgres_root_ca_cert is defined %}
+            - name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+              mountPath: {{ ca_trust_bundle }}
+              subPath: {{ postgres_root_ca_filename }}
+              readOnly: true
+{% endif %}
             - name: supervisor-socket
               mountPath: "/var/run/supervisor"
             - name: rsyslog-socket
@@ -203,16 +220,6 @@ spec:
 
             - name: "{{ kubernetes_deployment_name }}-application-credentials"
               mountPath: "/etc/tower/conf.d/"
-              readOnly: true
-
-            - name: {{ kubernetes_deployment_name }}-launch-awx-web
-              mountPath: "/usr/bin/launch_awx.sh"
-              subPath: "launch_awx.sh"
-              readOnly: true
-
-            - name: {{ kubernetes_deployment_name }}-launch-awx-task
-              mountPath: "/usr/bin/launch_awx_task.sh"
-              subPath: "launch_awx_task.sh"
               readOnly: true
 
             - name: {{ kubernetes_deployment_name }}-supervisor-web-config
@@ -258,6 +265,12 @@ spec:
             - /usr/bin/launch_awx_task.sh
           imagePullPolicy: Always
           volumeMounts:
+{% if postgres_root_ca_cert is defined %}
+            - name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+              mountPath: {{ ca_trust_bundle }}
+              subPath: {{ postgres_root_ca_filename }}
+              readOnly: true
+{% endif %}
             - name: supervisor-socket
               mountPath: "/var/run/supervisor"
             - name: rsyslog-socket
@@ -280,16 +293,6 @@ spec:
 
             - name: "{{ kubernetes_deployment_name }}-application-credentials"
               mountPath: "/etc/tower/conf.d/"
-              readOnly: true
-
-            - name: {{ kubernetes_deployment_name }}-launch-awx-web
-              mountPath: "/usr/bin/launch_awx.sh"
-              subPath: "launch_awx.sh"
-              readOnly: true
-
-            - name: {{ kubernetes_deployment_name }}-launch-awx-task
-              mountPath: "/usr/bin/launch_awx_task.sh"
-              subPath: "launch_awx_task.sh"
               readOnly: true
 
             - name: {{ kubernetes_deployment_name }}-supervisor-web-config
@@ -386,6 +389,14 @@ spec:
 {{ affinity | to_nice_yaml(indent=2) | indent(width=8, indentfirst=True) }}
 {% endif %}
       volumes:
+{% if postgres_root_ca_cert is defined %}
+        - name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+          configMap:
+            name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+            items:
+            - key: postgres_root_ca.crt
+              path: postgres_root_ca.crt
+{% endif %}
         - name: supervisor-socket
           emptyDir: {}
         - name: rsyslog-socket
@@ -438,22 +449,6 @@ spec:
               - key: environment_sh
                 path: 'environment.sh'
 
-        - name: {{ kubernetes_deployment_name }}-launch-awx-web
-          configMap:
-            name: {{ kubernetes_deployment_name }}-launch-awx
-            items:
-              - key: launch-awx-web
-                path: 'launch_awx.sh'
-            defaultMode: 0755
-
-        - name: {{ kubernetes_deployment_name }}-launch-awx-task
-          configMap:
-            name: {{ kubernetes_deployment_name }}-launch-awx
-            items:
-              - key: launch-awx-task
-                path: 'launch_awx_task.sh'
-            defaultMode: 0755
-
         - name: {{ kubernetes_deployment_name }}-supervisor-web-config
           configMap:
             name: {{ kubernetes_deployment_name }}-supervisor-config
@@ -486,10 +481,20 @@ metadata:
   namespace: {{ kubernetes_namespace }}
   labels:
     name: {{ kubernetes_deployment_name }}-web-svc
+{% if kubernetes_service_annotations is defined %}
+  annotations:
+{% for key, value in kubernetes_service_annotations.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
 spec:
+  type: {{ kubernetes_web_svc_type }}
   ports:
     - name: http
       port: 80
+{% if kubernetes_web_svc_type == "ClusterIP" %}
+      nodePort: null
+{% endif %}
       targetPort: 8052
   selector:
     name: {{ kubernetes_deployment_name }}-web-deploy
@@ -504,18 +509,12 @@ metadata:
 {% if kubernetes_ingress_annotations is defined %}
   annotations:
 {% for key, value in kubernetes_ingress_annotations.items() %}
-    {{ key }}: {{ value }}
+    {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
 
 spec:
 {% if kubernetes_ingress_hostname is defined %}
-{% if kubernetes_ingress_tls_secret is defined %}
-  tls:
-  - hosts:
-    - {{ kubernetes_ingress_hostname }}
-    secretName: {{ kubernetes_ingress_tls_secret }}
-{% endif %}
   rules:
   - host: {{ kubernetes_ingress_hostname }}
     http:
@@ -525,10 +524,15 @@ spec:
           serviceName: {{ kubernetes_deployment_name }}-web-svc
           servicePort: 80
 {% else %}
-spec:
   backend:
     serviceName: {{ kubernetes_deployment_name }}-web-svc
     servicePort: 80
+{% endif %}
+{% if kubernetes_ingress_tls_secret is defined %}
+  tls:
+  - hosts:
+    - {{ kubernetes_ingress_hostname }}
+    secretName: {{ kubernetes_ingress_tls_secret }}
 {% endif %}
 {% endif %}
 {% if openshift_host is defined %}

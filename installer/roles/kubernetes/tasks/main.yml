@@ -1,9 +1,10 @@
 ---
 - name: Generate broadcast websocket secret
   set_fact:
-    broadcast_websocket_secret: "{{ lookup('password', '/dev/null', length=128) }}"
+    broadcast_websocket_secret: "{{ lookup('password', '/dev/null length=128') }}"
   run_once: true
   no_log: true
+  when: broadcast_websocket_secret is not defined
 
 - fail:
     msg: "Only set one of kubernetes_context or openshift_host"
@@ -75,7 +76,7 @@
           -e POSTGRESQL_USER={{ pg_username }} \
           -e POSTGRESQL_PASSWORD={{ pg_password | quote }} \
           -e POSTGRESQL_DATABASE={{ pg_database | quote }} \
-          -e POSTGRESQL_VERSION=10 \
+          -e POSTGRESQL_VERSION=12 \
           -n {{ kubernetes_namespace }}
       register: openshift_pg_activate
       no_log: true
@@ -100,7 +101,7 @@
 
     - name: Deploy and Activate Postgres (Kubernetes)
       shell: |
-        helm repo add stable https://kubernetes-charts.storage.googleapis.com
+        helm repo add stable https://charts.helm.sh/stable
         helm repo update
         helm upgrade {{ postgresql_service_name }} \
           --install \
@@ -132,9 +133,9 @@
     seconds: "{{ postgress_activate_wait }}"
   when: openshift_pg_activate.changed or kubernetes_pg_activate.changed
 
-- name: Check postgres version and upgrade Postgres if necessary
+- name: Check postgres version and upgrade Postgres if necessary (Openshift)
   block:
-    - name: Check if Postgres 9.6 is being used
+    - name: Check if Postgres 10 is being used
       shell: |
         POD=$({{ kubectl_or_oc }} -n {{ kubernetes_namespace }} \
           get pods -l=name=postgresql --field-selector status.phase=Running -o jsonpath="{.items[0].metadata.name}")
@@ -144,7 +145,7 @@
       block:
         - name: Set new pg image
           shell: |
-            IMAGE=registry.access.redhat.com/rhscl/postgresql-10-rhel7
+            IMAGE=registry.redhat.io/rhel-8/postgresql-12
             {{ kubectl_or_oc }} -n {{ kubernetes_namespace }} set image dc/postgresql postgresql=$IMAGE
 
         - name: Wait for change to take affect
@@ -161,7 +162,7 @@
 
         - name: Set env var for new pg version
           shell: |
-            {{ kubectl_or_oc }} -n {{ kubernetes_namespace }} set env dc/postgresql POSTGRESQL_VERSION=10
+            {{ kubectl_or_oc }} -n {{ kubernetes_namespace }} set env dc/postgresql POSTGRESQL_VERSION=12
 
         - name: Wait for Postgres to redeploy
           pause:
@@ -184,9 +185,11 @@
         - name: Wait for Postgres to redeploy
           pause:
             seconds: "{{ postgress_activate_wait }}"
-      when: "pg_version is success and '9.6' in pg_version.stdout"
+      when: "pg_version is success and '10' in pg_version.stdout"
   when:
     - pg_hostname is not defined or pg_hostname == ''
+    - postgres_svc_details is defined and postgres_svc_details.rc != 0
+    - openshift_host is defined
 
 - name: Set image names if using custom registry
   block:
@@ -200,6 +203,34 @@
   set_fact:
     kubernetes_deployment_api_version: "{{ 'apps/v1' if kube_api_version is version('1.9', '>=') else 'apps/v1beta1' }}"
 
+- name: Use Custom Root CA file for PosgtreSQL SSL communication
+  block:
+    - name: Get Root CA file contents
+      set_fact:
+        postgres_root_ca_cert: "{{ lookup('file', pg_root_ca_file) }}"
+      no_log: true
+
+    - name: Render Root CA template
+      set_fact:
+        postgres_root_ca: "{{ lookup('template', 'postgres_root_ca.yml.j2') }}"
+      no_log: true
+
+    - name: Apply Root CA template
+      shell: |
+        echo {{ postgres_root_ca | quote }} | {{ kubectl_or_oc }} apply -f -
+      no_log: true
+
+    - name: Set Root CA file name
+      set_fact:
+        postgres_root_ca_filename: 'postgres_root_ca.crt'
+
+    - name: Set Root CA file location
+      set_fact:
+        ca_trust_bundle: '/etc/tower/{{ postgres_root_ca_filename }}'
+  when:
+    - pg_root_ca_file is defined
+    - pg_root_ca_file != ''
+
 - name: Render deployment templates
   set_fact:
     "{{ item }}": "{{ lookup('template', item + '.yml.j2') }}"
@@ -208,7 +239,6 @@
     - 'secret'
     - 'deployment'
     - 'supervisor'
-    - 'launch_awx'
   no_log: true
 
 - name: Apply Deployment
@@ -219,7 +249,6 @@
     - "{{ secret }}"
     - "{{ deployment }}"
     - "{{ supervisor }}"
-    - "{{ launch_awx }}"
   no_log: true
 
 - name: Delete any existing management pod

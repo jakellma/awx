@@ -25,6 +25,7 @@ from awx.main.models import (
     Job,
     JobTemplate,
     Notification,
+    Organization,
     Project,
     ProjectUpdate,
     UnifiedJob,
@@ -37,6 +38,8 @@ from awx.main.models.credential import ManagedCredentialType
 from awx.main import tasks
 from awx.main.utils import encrypt_field, encrypt_value
 from awx.main.utils.safe_yaml import SafeLoader
+
+from awx.main.utils.licensing import Licenser
 
 
 class TestJobExecution(object):
@@ -60,8 +63,24 @@ def patch_Job():
 
 
 @pytest.fixture
+def patch_Organization():
+    _credentials = []
+    credentials_mock = mock.Mock(**{
+        'all': lambda: _credentials,
+        'add': _credentials.append,
+        'exists': lambda: len(_credentials) > 0,
+        'spec_set': ['all', 'add', 'exists'],
+    })
+    with mock.patch.object(Organization, 'galaxy_credentials', credentials_mock):
+        yield
+
+
+@pytest.fixture
 def job():
-    return Job(pk=1, id=1, project=Project(), inventory=Inventory(), job_template=JobTemplate(id=1, name='foo'))
+    return Job(
+        pk=1, id=1,
+        project=Project(local_path='/projects/_23_foo'),
+        inventory=Inventory(), job_template=JobTemplate(id=1, name='foo'))
 
 
 @pytest.fixture
@@ -128,7 +147,6 @@ def test_send_notifications_list(mock_notifications_filter, mock_job_get, mocker
     ('SECRET_KEY', 'SECRET'),
     ('VMWARE_PASSWORD', 'SECRET'),
     ('API_SECRET', 'SECRET'),
-    ('ANSIBLE_GALAXY_SERVER_PRIMARY_GALAXY_PASSWORD', 'SECRET'),
     ('ANSIBLE_GALAXY_SERVER_PRIMARY_GALAXY_TOKEN', 'SECRET'),
 ])
 def test_safe_env_filtering(key, value):
@@ -162,7 +180,7 @@ def test_openstack_client_config_generation(mocker, source, expected, private_da
         'source_vars_dict': {},
         'get_cloud_credential': mocker.Mock(return_value=credential),
         'get_extra_credentials': lambda x: [],
-        'ansible_virtualenv_path': '/venv/foo'
+        'ansible_virtualenv_path': '/var/lib/awx/venv/foo'
     })
     cloud_config = update.build_private_data(inventory_update, private_data_dir)
     cloud_credential = yaml.safe_load(
@@ -206,6 +224,52 @@ def test_openstack_client_config_generation_with_project_domain_name(mocker, sou
         'source_vars_dict': {},
         'get_cloud_credential': mocker.Mock(return_value=credential),
         'get_extra_credentials': lambda x: [],
+        'ansible_virtualenv_path': '/var/lib/awx/venv/foo'
+    })
+    cloud_config = update.build_private_data(inventory_update, private_data_dir)
+    cloud_credential = yaml.safe_load(
+        cloud_config.get('credentials')[credential]
+    )
+    assert cloud_credential['clouds'] == {
+        'devstack': {
+            'auth': {
+                'auth_url': 'https://keystone.openstack.example.org',
+                'password': 'secrete',
+                'project_name': 'demo-project',
+                'username': 'demo',
+                'domain_name': 'my-demo-domain',
+                'project_domain_name': 'project-domain',
+            },
+            'verify': expected,
+            'private': True,
+        }
+    }
+
+
+@pytest.mark.parametrize("source,expected", [
+    (None, True), (False, False), (True, True)
+])
+def test_openstack_client_config_generation_with_region(mocker, source, expected, private_data_dir):
+    update = tasks.RunInventoryUpdate()
+    credential_type = CredentialType.defaults['openstack']()
+    inputs = {
+        'host': 'https://keystone.openstack.example.org',
+        'username': 'demo',
+        'password': 'secrete',
+        'project': 'demo-project',
+        'domain': 'my-demo-domain',
+        'project_domain_name': 'project-domain',
+        'region': 'region-name',
+    }
+    if source is not None:
+        inputs['verify_ssl'] = source
+    credential = Credential(pk=1, credential_type=credential_type, inputs=inputs)
+
+    inventory_update = mocker.Mock(**{
+        'source': 'openstack',
+        'source_vars_dict': {}, 
+        'get_cloud_credential': mocker.Mock(return_value=credential),
+        'get_extra_credentials': lambda x: [],
         'ansible_virtualenv_path': '/venv/foo'
     })
     cloud_config = update.build_private_data(inventory_update, private_data_dir)
@@ -224,6 +288,7 @@ def test_openstack_client_config_generation_with_project_domain_name(mocker, sou
             },
             'verify': expected,
             'private': True,
+            'region_name': 'region-name',
         }
     }
 
@@ -249,7 +314,7 @@ def test_openstack_client_config_generation_with_private_source_vars(mocker, sou
         'source_vars_dict': {'private': source},
         'get_cloud_credential': mocker.Mock(return_value=credential),
         'get_extra_credentials': lambda x: [],
-        'ansible_virtualenv_path': '/venv/foo'
+        'ansible_virtualenv_path': '/var/lib/awx/venv/foo'
     })
     cloud_config = update.build_private_data(inventory_update, private_data_dir)
     cloud_credential = yaml.load(
@@ -406,7 +471,9 @@ class TestExtraVarSanitation(TestJobExecution):
 class TestGenericRun():
 
     def test_generic_failure(self, patch_Job):
-        job = Job(status='running', inventory=Inventory(), project=Project())
+        job = Job(
+            status='running', inventory=Inventory(),
+            project=Project(local_path='/projects/_23_foo'))
         job.websocket_emit_status = mock.Mock()
 
         task = tasks.RunJob()
@@ -460,7 +527,7 @@ class TestGenericRun():
         task.instance = Job(pk=1, id=1)
         task.event_ct = 17
         task.finished_callback(None)
-        task.dispatcher.dispatch.assert_called_with({'event': 'EOF', 'final_counter': 17, 'job_id': 1})
+        task.dispatcher.dispatch.assert_called_with({'event': 'EOF', 'final_counter': 17, 'job_id': 1, 'guid': None})
 
     def test_save_job_metadata(self, job, update_model_wrapper):
         class MockMe():
@@ -605,13 +672,13 @@ class TestGenericRun():
 
     def test_invalid_custom_virtualenv(self, patch_Job, private_data_dir):
         job = Job(project=Project(), inventory=Inventory())
-        job.project.custom_virtualenv = '/venv/missing'
+        job.project.custom_virtualenv = '/var/lib/awx/venv/missing'
         task = tasks.RunJob()
 
         with pytest.raises(tasks.InvalidVirtualenvError) as e:
             task.build_env(job, private_data_dir)
 
-        assert 'Invalid virtual environment selected: /venv/missing' == str(e.value)
+        assert 'Invalid virtual environment selected: /var/lib/awx/venv/missing' == str(e.value)
 
 
 class TestAdhocRun(TestJobExecution):
@@ -1775,28 +1842,132 @@ class TestJobCredentials(TestJobExecution):
         assert env['FOO'] == 'BAR'
 
 
+@pytest.mark.usefixtures("patch_Organization")
+class TestProjectUpdateGalaxyCredentials(TestJobExecution):
+
+    @pytest.fixture
+    def project_update(self):
+        org = Organization(pk=1)
+        proj = Project(pk=1, organization=org)
+        project_update = ProjectUpdate(pk=1, project=proj, scm_type='git')
+        project_update.websocket_emit_status = mock.Mock()
+        return project_update
+
+    parametrize = {
+        'test_galaxy_credentials_ignore_certs': [
+            dict(ignore=True),
+            dict(ignore=False),
+        ],
+    }
+
+    def test_galaxy_credentials_ignore_certs(self, private_data_dir, project_update, ignore):
+        settings.GALAXY_IGNORE_CERTS = ignore
+        task = tasks.RunProjectUpdate()
+        env = task.build_env(project_update, private_data_dir)
+        if ignore:
+            assert env['ANSIBLE_GALAXY_IGNORE'] is True
+        else:
+            assert 'ANSIBLE_GALAXY_IGNORE' not in env
+
+    def test_galaxy_credentials_empty(self, private_data_dir, project_update):
+
+        class RunProjectUpdate(tasks.RunProjectUpdate):
+            __vars__ = {}
+
+            def _write_extra_vars_file(self, private_data_dir, extra_vars, *kw):
+                self.__vars__ = extra_vars
+
+        task = RunProjectUpdate()
+        env = task.build_env(project_update, private_data_dir)
+
+        with mock.patch.object(Licenser, 'validate', lambda *args, **kw: {}):
+            task.build_extra_vars_file(project_update, private_data_dir)
+
+        assert task.__vars__['roles_enabled'] is False
+        assert task.__vars__['collections_enabled'] is False
+        for k in env:
+            assert not k.startswith('ANSIBLE_GALAXY_SERVER')
+
+    def test_single_public_galaxy(self, private_data_dir, project_update):
+        class RunProjectUpdate(tasks.RunProjectUpdate):
+            __vars__ = {}
+
+            def _write_extra_vars_file(self, private_data_dir, extra_vars, *kw):
+                self.__vars__ = extra_vars
+
+        credential_type = CredentialType.defaults['galaxy_api_token']()
+        public_galaxy = Credential(pk=1, credential_type=credential_type, inputs={
+            'url': 'https://galaxy.ansible.com/',
+        })
+        project_update.project.organization.galaxy_credentials.add(public_galaxy)
+        task = RunProjectUpdate()
+        env = task.build_env(project_update, private_data_dir)
+
+        with mock.patch.object(Licenser, 'validate', lambda *args, **kw: {}):
+            task.build_extra_vars_file(project_update, private_data_dir)
+
+        assert task.__vars__['roles_enabled'] is True
+        assert task.__vars__['collections_enabled'] is True
+        assert sorted([
+            (k, v) for k, v in env.items()
+            if k.startswith('ANSIBLE_GALAXY')
+        ]) == [
+            ('ANSIBLE_GALAXY_SERVER_LIST', 'server0'),
+            ('ANSIBLE_GALAXY_SERVER_SERVER0_URL', 'https://galaxy.ansible.com/'),
+        ]
+
+    def test_multiple_galaxy_endpoints(self, private_data_dir, project_update):
+        credential_type = CredentialType.defaults['galaxy_api_token']()
+        public_galaxy = Credential(pk=1, credential_type=credential_type, inputs={
+            'url': 'https://galaxy.ansible.com/',
+        })
+        rh = Credential(pk=2, credential_type=credential_type, inputs={
+            'url': 'https://cloud.redhat.com/api/automation-hub/',
+            'auth_url': 'https://sso.redhat.com/example/openid-connect/token/',
+            'token': 'secret123'
+        })
+        project_update.project.organization.galaxy_credentials.add(public_galaxy)
+        project_update.project.organization.galaxy_credentials.add(rh)
+        task = tasks.RunProjectUpdate()
+        env = task.build_env(project_update, private_data_dir)
+        assert sorted([
+            (k, v) for k, v in env.items()
+            if k.startswith('ANSIBLE_GALAXY')
+        ]) == [
+            ('ANSIBLE_GALAXY_SERVER_LIST', 'server0,server1'),
+            ('ANSIBLE_GALAXY_SERVER_SERVER0_URL', 'https://galaxy.ansible.com/'),
+            ('ANSIBLE_GALAXY_SERVER_SERVER1_AUTH_URL', 'https://sso.redhat.com/example/openid-connect/token/'),  # noqa
+            ('ANSIBLE_GALAXY_SERVER_SERVER1_TOKEN', 'secret123'),
+            ('ANSIBLE_GALAXY_SERVER_SERVER1_URL', 'https://cloud.redhat.com/api/automation-hub/'),
+        ]
+
+
+@pytest.mark.usefixtures("patch_Organization")
 class TestProjectUpdateCredentials(TestJobExecution):
     @pytest.fixture
     def project_update(self):
-        project_update = ProjectUpdate(pk=1, project=Project(pk=1))
+        project_update = ProjectUpdate(
+            pk=1,
+            project=Project(pk=1, organization=Organization(pk=1)),
+        )
         project_update.websocket_emit_status = mock.Mock()
         return project_update
 
     parametrize = {
         'test_username_and_password_auth': [
             dict(scm_type='git'),
-            dict(scm_type='hg'),
             dict(scm_type='svn'),
+            dict(scm_type='archive'),
         ],
         'test_ssh_key_auth': [
             dict(scm_type='git'),
-            dict(scm_type='hg'),
             dict(scm_type='svn'),
+            dict(scm_type='archive'),
         ],
         'test_awx_task_env': [
             dict(scm_type='git'),
-            dict(scm_type='hg'),
             dict(scm_type='svn'),
+            dict(scm_type='archive'),
         ]
     }
 
@@ -1816,7 +1987,9 @@ class TestProjectUpdateCredentials(TestJobExecution):
         assert settings.PROJECTS_ROOT in process_isolation['process_isolation_show_paths']
 
         task._write_extra_vars_file = mock.Mock()
-        task.build_extra_vars_file(project_update, private_data_dir)
+
+        with mock.patch.object(Licenser, 'validate', lambda *args, **kw: {}):
+            task.build_extra_vars_file(project_update, private_data_dir)
 
         call_args, _ = task._write_extra_vars_file.call_args_list[0]
         _, extra_vars = call_args
@@ -1872,13 +2045,6 @@ class TestProjectUpdateCredentials(TestJobExecution):
         assert env['FOO'] == 'BAR'
 
 
-@pytest.fixture
-def mock_ansible_version():
-    with mock.patch('awx.main.tasks._get_ansible_version', mock.MagicMock(return_value='2.10')) as _fixture:
-        yield _fixture
-
-
-@pytest.mark.usefixtures("mock_ansible_version")
 class TestInventoryUpdateCredentials(TestJobExecution):
     @pytest.fixture
     def inventory_update(self):
@@ -1939,8 +2105,8 @@ class TestInventoryUpdateCredentials(TestJobExecution):
                     credential, env, {}, [], private_data_dir
                 )
 
-        assert '--custom' in ' '.join(args)
-        script = args[args.index('--source') + 1]
+        assert '-i' in ' '.join(args)
+        script = args[args.index('-i') + 1]
         with open(script, 'r') as f:
             assert f.read() == inventory_update.source_script.script
         assert env['FOO'] == 'BAR'
@@ -2012,7 +2178,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
         task = tasks.RunInventoryUpdate()
         azure_rm = CredentialType.defaults['azure_rm']()
         inventory_update.source = 'azure_rm'
-        inventory_update.source_regions = 'north, south, east, west'
 
         def get_cred():
             cred = Credential(
@@ -2029,10 +2194,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
             return cred
         inventory_update.get_cloud_credential = get_cred
         inventory_update.get_extra_credentials = mocker.Mock(return_value=[])
-        inventory_update.source_vars = {
-            'include_powerstate': 'yes',
-            'group_by_resource_group': 'no'
-        }
 
         private_data_files = task.build_private_data_files(inventory_update, private_data_dir)
         env = task.build_env(inventory_update, private_data_dir, False, private_data_files)
@@ -2051,7 +2212,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
         task = tasks.RunInventoryUpdate()
         azure_rm = CredentialType.defaults['azure_rm']()
         inventory_update.source = 'azure_rm'
-        inventory_update.source_regions = 'all'
 
         def get_cred():
             cred = Credential(
@@ -2067,11 +2227,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
             return cred
         inventory_update.get_cloud_credential = get_cred
         inventory_update.get_extra_credentials = mocker.Mock(return_value=[])
-        inventory_update.source_vars = {
-            'include_powerstate': 'yes',
-            'group_by_resource_group': 'no',
-            'group_by_security_group': 'no'
-        }
 
         private_data_files = task.build_private_data_files(inventory_update, private_data_dir)
         env = task.build_env(inventory_update, private_data_dir, False, private_data_files)
@@ -2089,7 +2244,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
         task = tasks.RunInventoryUpdate()
         gce = CredentialType.defaults['gce']()
         inventory_update.source = 'gce'
-        inventory_update.source_regions = 'all'
 
         def get_cred():
             cred = Credential(
@@ -2187,28 +2341,20 @@ class TestInventoryUpdateCredentials(TestJobExecution):
         inventory_update.get_cloud_credential = get_cred
         inventory_update.get_extra_credentials = mocker.Mock(return_value=[])
 
-        inventory_update.source_vars = {
-            'satellite6_group_patterns': '[a,b,c]',
-            'satellite6_group_prefix': 'hey_',
-            'satellite6_want_hostcollections': True,
-            'satellite6_want_ansible_ssh_host': True,
-            'satellite6_rich_params': True,
-            'satellite6_want_facts': False
-        }
-
         private_data_files = task.build_private_data_files(inventory_update, private_data_dir)
         env = task.build_env(inventory_update, private_data_dir, False, private_data_files)
+        safe_env = build_safe_env(env)
 
-        env["FOREMAN_SERVER"] == "https://example.org",
-        env["FOREMAN_USER"] == "bob",
-        env["FOREMAN_PASSWORD"] == "secret",
+        assert env["FOREMAN_SERVER"] == "https://example.org"
+        assert env["FOREMAN_USER"] == "bob"
+        assert env["FOREMAN_PASSWORD"] == "secret"
+        assert safe_env["FOREMAN_PASSWORD"] == tasks.HIDDEN_PASSWORD
 
     @pytest.mark.parametrize('verify', [True, False])
     def test_tower_source(self, verify, inventory_update, private_data_dir, mocker):
         task = tasks.RunInventoryUpdate()
         tower = CredentialType.defaults['tower']()
         inventory_update.source = 'tower'
-        inventory_update.instance_filters = '12345'
         inputs = {
             'host': 'https://tower.example.org',
             'username': 'bob',
@@ -2240,7 +2386,6 @@ class TestInventoryUpdateCredentials(TestJobExecution):
         task = tasks.RunInventoryUpdate()
         tower = CredentialType.defaults['tower']()
         inventory_update.source = 'tower'
-        inventory_update.instance_filters = '12345'
         inputs = {
             'host': 'https://tower.example.org',
             'username': 'bob',

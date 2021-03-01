@@ -62,14 +62,16 @@ function InventorySource({ i18n, inventory, setBreadcrumb, me }) {
     }
   }, [inventory, source, setBreadcrumb]);
 
-  const loadSchedules = params =>
-    InventorySourcesAPI.readSchedules(source?.id, params);
+  const loadSchedules = useCallback(
+    params => {
+      return InventorySourcesAPI.readSchedules(source?.id, params);
+    },
+    [source]
+  );
 
-  const createSchedule = data =>
-    InventorySourcesAPI.createSchedule(source?.id, data);
-
-  const loadScheduleOptions = () =>
-    InventorySourcesAPI.readScheduleOptions(source?.id);
+  const loadScheduleOptions = useCallback(() => {
+    return InventorySourcesAPI.readScheduleOptions(source?.id);
+  }, [source]);
 
   const tabsArray = [
     {
@@ -155,11 +157,11 @@ function InventorySource({ i18n, inventory, setBreadcrumb, me }) {
             path="/inventories/inventory/:id/sources/:sourceId/schedules"
           >
             <Schedules
-              createSchedule={createSchedule}
-              setBreadcrumb={(unifiedJobTemplate, schedule) =>
+              apiModel={InventorySourcesAPI}
+              setBreadcrumb={schedule =>
                 setBreadcrumb(inventory, source, schedule)
               }
-              unifiedJobTemplate={source}
+              resource={source}
               loadSchedules={loadSchedules}
               loadScheduleOptions={loadScheduleOptions}
             />

@@ -11,7 +11,11 @@ import AlertModal from '../../../components/AlertModal';
 
 import DatalistToolbar from '../../../components/DataListToolbar';
 import { ApplicationsAPI } from '../../../api';
-import PaginatedDataList, {
+import PaginatedTable, {
+  HeaderRow,
+  HeaderCell,
+} from '../../../components/PaginatedTable';
+import {
   ToolbarDeleteButton,
   ToolbarAddButton,
 } from '../../../components/PaginatedDataList';
@@ -32,7 +36,13 @@ function ApplicationsList({ i18n }) {
     isLoading,
     error,
     request: fetchApplications,
-    result: { applications, itemCount, actions },
+    result: {
+      applications,
+      itemCount,
+      actions,
+      relatedSearchableKeys,
+      searchableKeys,
+    },
   } = useRequest(
     useCallback(async () => {
       const params = parseQueryString(QS_CONFIG, location.search);
@@ -46,12 +56,20 @@ function ApplicationsList({ i18n }) {
         applications: response.data.results,
         itemCount: response.data.count,
         actions: actionsResponse.data.actions,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse.data.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
       };
     }, [location]),
     {
       applications: [],
       itemCount: 0,
       actions: {},
+      relatedSearchableKeys: [],
+      searchableKeys: [],
     }
   );
 
@@ -66,11 +84,11 @@ function ApplicationsList({ i18n }) {
   const {
     isLoading: deleteLoading,
     deletionError,
-    deleteItems: handleDeleteApplications,
+    deleteItems: deleteApplications,
     clearDeletionError,
   } = useDeleteItems(
-    useCallback(async () => {
-      await Promise.all(selected.map(({ id }) => ApplicationsAPI.destroy(id)));
+    useCallback(() => {
+      return Promise.all(selected.map(({ id }) => ApplicationsAPI.destroy(id)));
     }, [selected]),
     {
       qsConfig: QS_CONFIG,
@@ -79,8 +97,8 @@ function ApplicationsList({ i18n }) {
     }
   );
 
-  const handleDelete = async () => {
-    await handleDeleteApplications();
+  const handleDeleteApplications = async () => {
+    await deleteApplications();
     setSelected([]);
   };
 
@@ -90,7 +108,7 @@ function ApplicationsList({ i18n }) {
     <>
       <PageSection>
         <Card>
-          <PaginatedDataList
+          <PaginatedTable
             contentError={error}
             hasContentLoading={isLoading || deleteLoading}
             items={applications}
@@ -101,37 +119,20 @@ function ApplicationsList({ i18n }) {
             toolbarSearchColumns={[
               {
                 name: i18n._(t`Name`),
-                key: 'name',
+                key: 'name__icontains',
                 isDefault: true,
               },
               {
                 name: i18n._(t`Description`),
-                key: 'description',
+                key: 'description__icontains',
               },
             ]}
-            toolbarSortColumns={[
-              {
-                name: i18n._(t`Name`),
-                key: 'name',
-              },
-              {
-                name: i18n._(t`Created`),
-                key: 'created',
-              },
-              {
-                name: i18n._(t`Organization`),
-                key: 'organization',
-              },
-              {
-                name: i18n._(t`Description`),
-                key: 'description',
-              },
-            ]}
+            toolbarSearchableKeys={searchableKeys}
+            toolbarRelatedSearchableKeys={relatedSearchableKeys}
             renderToolbar={props => (
               <DatalistToolbar
                 {...props}
                 showSelectAll
-                showExpandCollapse
                 isAllSelected={isAllSelected}
                 onSelectAll={isSelected =>
                   setSelected(isSelected ? [...applications] : [])
@@ -148,14 +149,24 @@ function ApplicationsList({ i18n }) {
                     : []),
                   <ToolbarDeleteButton
                     key="delete"
-                    onDelete={handleDelete}
+                    onDelete={handleDeleteApplications}
                     itemsToDelete={selected}
                     pluralizedItemName={i18n._(t`Applications`)}
                   />,
                 ]}
               />
             )}
-            renderItem={application => (
+            headerRow={
+              <HeaderRow qsConfig={QS_CONFIG}>
+                <HeaderCell sortKey="name">{i18n._(t`Name`)}</HeaderCell>
+                <HeaderCell sortKey="organization">
+                  {i18n._(t`Organization`)}
+                </HeaderCell>
+                <HeaderCell>{i18n._(t`Last Modified`)}</HeaderCell>
+                <HeaderCell>{i18n._(t`Actions`)}</HeaderCell>
+              </HeaderRow>
+            }
+            renderRow={(application, index) => (
               <ApplicationListItem
                 key={application.id}
                 value={application.name}
@@ -163,6 +174,7 @@ function ApplicationsList({ i18n }) {
                 detailUrl={`${match.url}/${application.id}/details`}
                 onSelect={() => handleSelect(application)}
                 isSelected={selected.some(row => row.id === application.id)}
+                rowIndex={index}
               />
             )}
             emptyStateControls={

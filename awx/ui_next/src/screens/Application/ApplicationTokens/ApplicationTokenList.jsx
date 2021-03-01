@@ -26,14 +26,20 @@ function ApplicationTokenList({ i18n }) {
   const {
     error,
     isLoading,
-    result: { tokens, itemCount },
+    result: { tokens, itemCount, relatedSearchableKeys, searchableKeys },
     request: fetchTokens,
   } = useRequest(
     useCallback(async () => {
       const params = parseQueryString(QS_CONFIG, location.search);
-      const {
-        data: { results, count },
-      } = await ApplicationsAPI.readTokens(id, params);
+      const [
+        {
+          data: { results, count },
+        },
+        actionsResponse,
+      ] = await Promise.all([
+        ApplicationsAPI.readTokens(id, params),
+        ApplicationsAPI.readTokenOptions(id),
+      ]);
       const modifiedResults = results.map(result => {
         result.summary_fields = {
           user: result.summary_fields.user,
@@ -43,9 +49,18 @@ function ApplicationTokenList({ i18n }) {
         result.name = result.summary_fields.user?.username;
         return result;
       });
-      return { tokens: modifiedResults, itemCount: count };
+      return {
+        tokens: modifiedResults,
+        itemCount: count,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse.data.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
+      };
     }, [id, location.search]),
-    { tokens: [], itemCount: 0 }
+    { tokens: [], itemCount: 0, relatedSearchableKeys: [], searchableKeys: [] }
   );
 
   useEffect(() => {
@@ -61,8 +76,8 @@ function ApplicationTokenList({ i18n }) {
     deleteItems: handleDeleteApplications,
     clearDeletionError,
   } = useDeleteItems(
-    useCallback(async () => {
-      await Promise.all(
+    useCallback(() => {
+      return Promise.all(
         selected.map(({ id: tokenId }) => TokensAPI.destroy(tokenId))
       );
     }, [selected]),
@@ -77,6 +92,7 @@ function ApplicationTokenList({ i18n }) {
     await handleDeleteApplications();
     setSelected([]);
   };
+
   return (
     <>
       <PaginatedDataList
@@ -90,7 +106,7 @@ function ApplicationTokenList({ i18n }) {
         toolbarSearchColumns={[
           {
             name: i18n._(t`Name`),
-            key: 'user__username',
+            key: 'user__username__icontains',
             isDefault: true,
           },
         ]}
@@ -116,11 +132,12 @@ function ApplicationTokenList({ i18n }) {
             key: 'modified',
           },
         ]}
+        toolbarSearchableKeys={searchableKeys}
+        toolbarRelatedSearchableKeys={relatedSearchableKeys}
         renderToolbar={props => (
           <DatalistToolbar
             {...props}
             showSelectAll
-            showExpandCollapse
             isAllSelected={isAllSelected}
             onSelectAll={isSelected =>
               setSelected(isSelected ? [...tokens] : [])

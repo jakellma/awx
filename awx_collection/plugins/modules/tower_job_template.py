@@ -317,7 +317,7 @@ EXAMPLES = '''
 
 '''
 
-from ..module_utils.tower_api import TowerModule
+from ..module_utils.tower_api import TowerAPIModule
 import json
 
 
@@ -340,24 +340,24 @@ def main():
     argument_spec = dict(
         name=dict(required=True),
         new_name=dict(),
-        description=dict(default=''),
+        description=dict(),
         organization=dict(),
         job_type=dict(choices=['run', 'check']),
         inventory=dict(),
         project=dict(),
         playbook=dict(),
-        credential=dict(default=''),
-        vault_credential=dict(default=''),
+        credential=dict(),
+        vault_credential=dict(),
         custom_virtualenv=dict(),
         credentials=dict(type='list', elements='str'),
         forks=dict(type='int'),
-        limit=dict(default=''),
+        limit=dict(),
         verbosity=dict(type='int', choices=[0, 1, 2, 3, 4], default=0),
         extra_vars=dict(type='dict'),
-        job_tags=dict(default=''),
+        job_tags=dict(),
         force_handlers=dict(type='bool', default=False, aliases=['force_handlers_enabled']),
-        skip_tags=dict(default=''),
-        start_at_task=dict(default=''),
+        skip_tags=dict(),
+        start_at_task=dict(),
         timeout=dict(type='int', default=0),
         use_fact_cache=dict(type='bool', aliases=['fact_caching_enabled']),
         host_config_key=dict(),
@@ -388,7 +388,7 @@ def main():
     )
 
     # Create a module for ourselves
-    module = TowerModule(argument_spec=argument_spec)
+    module = TowerAPIModule(argument_spec=argument_spec)
 
     # Extract our parameters
     name = module.params.get('name')
@@ -399,17 +399,17 @@ def main():
     credential = module.params.get('credential')
     vault_credential = module.params.get('vault_credential')
     credentials = module.params.get('credentials')
-    if vault_credential != '':
+    if vault_credential:
         if credentials is None:
             credentials = []
         credentials.append(vault_credential)
-    if credential != '':
+    if credential:
         if credentials is None:
             credentials = []
         credentials.append(credential)
 
     new_fields = {}
-    search_fields = {'name': name}
+    search_fields = {}
 
     # Attempt to look up the related items the user specified (these will fail the module if not found)
     organization_id = None
@@ -419,14 +419,14 @@ def main():
         search_fields['organization'] = new_fields['organization'] = organization_id
 
     # Attempt to look up an existing item based on the provided data
-    existing_item = module.get_one('job_templates', **{'data': search_fields})
+    existing_item = module.get_one('job_templates', name_or_id=name, **{'data': search_fields})
 
     if state == 'absent':
         # If the state was absent we can let the module delete it if needed, the module will handle exiting from this
         module.delete_if_needed(existing_item)
 
     # Create the data that gets sent for create and update
-    new_fields['name'] = new_name if new_name else name
+    new_fields['name'] = new_name if new_name else (module.get_item_name(existing_item) if existing_item else name)
     for field_name in (
         'description', 'job_type', 'playbook', 'scm_branch', 'forks', 'limit', 'verbosity',
         'job_tags', 'force_handlers', 'skip_tags', 'start_at_task', 'timeout', 'use_fact_cache',
@@ -436,7 +436,7 @@ def main():
         'become_enabled', 'diff_mode', 'allow_simultaneous', 'custom_virtualenv', 'job_slice_count', 'webhook_service',
     ):
         field_val = module.params.get(field_name)
-        if field_val:
+        if field_val is not None:
             new_fields[field_name] = field_val
 
         # Special treatment of extra_vars parameter
@@ -453,9 +453,8 @@ def main():
         new_fields['inventory'] = module.resolve_name_to_id('inventories', inventory)
     if project is not None:
         if organization_id is not None:
-            project_data = module.get_one('projects', **{
+            project_data = module.get_one('projects', name_or_id=project, **{
                 'data': {
-                    'name': project,
                     'organization': organization_id,
                 }
             })
@@ -481,6 +480,12 @@ def main():
         association_fields['labels'] = []
         for item in labels:
             association_fields['labels'].append(module.resolve_name_to_id('labels', item))
+# Code to use once Issue #7567 is resolved
+#            search_fields = {'name': item}
+#            if organization:
+#                search_fields['organization'] = organization_id
+#            label_id = module.get_one('labels', **{'data': search_fields})
+#            association_fields['labels'].append(label_id)
 
     notifications_start = module.params.get('notification_templates_started')
     if notifications_start is not None:

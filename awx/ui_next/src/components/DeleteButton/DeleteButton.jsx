@@ -18,7 +18,7 @@ function DeleteButton({
   return (
     <>
       <Button
-        variant={variant || 'danger'}
+        variant={variant || 'secondary'}
         aria-label={i18n._(t`Delete`)}
         isDisabled={isDisabled}
         onClick={() => setIsOpen(true)}
@@ -42,7 +42,7 @@ function DeleteButton({
           </Button>,
           <Button
             key="cancel"
-            variant="secondary"
+            variant="link"
             aria-label={i18n._(t`Cancel`)}
             onClick={() => setIsOpen(false)}
           >

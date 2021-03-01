@@ -20,7 +20,6 @@ import useRequest from '../../../util/useRequest';
 import FormActionGroup from '../../../components/FormActionGroup';
 import FormField, {
   CheckboxField,
-  FieldTooltip,
   FormSubmitError,
 } from '../../../components/FormField';
 import FieldWithPrompt from '../../../components/FieldWithPrompt';
@@ -39,7 +38,8 @@ import {
   ProjectLookup,
   MultiCredentialsLookup,
 } from '../../../components/Lookup';
-import { JobTemplatesAPI, ProjectsAPI } from '../../../api';
+import Popover from '../../../components/Popover';
+import { JobTemplatesAPI } from '../../../api';
 import LabelSelect from './LabelSelect';
 import PlaybookSelect from './PlaybookSelect';
 import WebhookSubForm from './WebhookSubForm';
@@ -53,6 +53,7 @@ function JobTemplateForm({
   setFieldValue,
   submitError,
   i18n,
+  isOverrideDisabledLookup,
 }) {
   const [contentError, setContentError] = useState(false);
   const [inventory, setInventory] = useState(
@@ -91,16 +92,13 @@ function JobTemplateForm({
   const [jobTagsField, , jobTagsHelpers] = useField('job_tags');
   const [skipTagsField, , skipTagsHelpers] = useField('skip_tags');
 
-  const {
-    request: fetchProject,
-    error: projectContentError,
-    contentLoading: hasProjectLoading,
-  } = useRequest(
-    useCallback(async () => {
-      if (template?.project) {
-        await ProjectsAPI.readDetail(template?.project);
-      }
-    }, [template])
+  const [, webhookServiceMeta, webhookServiceHelpers] = useField(
+    'webhook_service'
+  );
+  const [, webhookUrlMeta, webhookUrlHelpers] = useField('webhook_url');
+  const [, webhookKeyMeta, webhookKeyHelpers] = useField('webhook_key');
+  const [, webhookCredentialMeta, webhookCredentialHelpers] = useField(
+    'webhook_credential'
   );
 
   const {
@@ -119,12 +117,23 @@ function JobTemplateForm({
   );
 
   useEffect(() => {
-    fetchProject();
-  }, [fetchProject]);
-
-  useEffect(() => {
     loadRelatedInstanceGroups();
   }, [loadRelatedInstanceGroups]);
+
+  useEffect(() => {
+    if (enableWebhooks) {
+      webhookServiceHelpers.setValue(webhookServiceMeta.initialValue);
+      webhookUrlHelpers.setValue(webhookUrlMeta.initialValue);
+      webhookKeyHelpers.setValue(webhookKeyMeta.initialValue);
+      webhookCredentialHelpers.setValue(webhookCredentialMeta.initialValue);
+    } else {
+      webhookServiceHelpers.setValue('');
+      webhookUrlHelpers.setValue('');
+      webhookKeyHelpers.setValue('');
+      webhookCredentialHelpers.setValue(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableWebhooks]);
 
   const handleProjectValidation = project => {
     if (!project && projectMeta.touched) {
@@ -138,18 +147,11 @@ function JobTemplateForm({
 
   const handleProjectUpdate = useCallback(
     value => {
-      playbookHelpers.setValue(0);
-      scmHelpers.setValue('');
-      projectHelpers.setValue(value);
+      setFieldValue('playbook', 0);
+      setFieldValue('scm_branch', '');
+      setFieldValue('project', value);
     },
-    [] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const handleProjectAutocomplete = useCallback(
-    val => {
-      projectHelpers.setValue(val);
-    },
-    [] // eslint-disable-line react-hooks/exhaustive-deps
+    [setFieldValue]
   );
 
   const jobTypeOptions = [
@@ -180,16 +182,12 @@ function JobTemplateForm({
     callbackUrl = `${origin}${path}`;
   }
 
-  if (instanceGroupLoading || hasProjectLoading) {
+  if (instanceGroupLoading) {
     return <ContentLoading />;
   }
 
-  if (contentError || instanceGroupError || projectContentError) {
-    return (
-      <ContentError
-        error={contentError || instanceGroupError || projectContentError}
-      />
-    );
+  if (contentError || instanceGroupError) {
+    return <ContentError error={contentError || instanceGroupError} />;
   }
 
   return (
@@ -230,17 +228,25 @@ function JobTemplateForm({
             }}
           />
         </FieldWithPrompt>
-        <FieldWithPrompt
-          fieldId="template-inventory"
+        <FormGroup
+          fieldId="inventory-lookup"
+          validated={
+            !(inventoryMeta.touched || askInventoryOnLaunchField.value) ||
+            !inventoryMeta.error
+              ? 'default'
+              : 'error'
+          }
+          helperTextInvalid={inventoryMeta.error}
           isRequired={!askInventoryOnLaunchField.value}
-          label={i18n._(t`Inventory`)}
-          promptId="template-ask-inventory-on-launch"
-          promptName="ask_inventory_on_launch"
-          tooltip={i18n._(t`Select the inventory containing the hosts
-            you want this job to manage.`)}
         >
           <InventoryLookup
+            fieldId="template-inventory"
             value={inventory}
+            promptId="template-ask-inventory-on-launch"
+            promptName="ask_inventory_on_launch"
+            isPromptableField
+            tooltip={i18n._(t`Select the inventory containing the hosts
+            you want this job to manage.`)}
             onBlur={() => inventoryHelpers.setTouched()}
             onChange={value => {
               inventoryHelpers.setValue(value ? value.id : null);
@@ -249,17 +255,9 @@ function JobTemplateForm({
             required={!askInventoryOnLaunchField.value}
             touched={inventoryMeta.touched}
             error={inventoryMeta.error}
+            isOverrideDisabled={isOverrideDisabledLookup}
           />
-          {(inventoryMeta.touched || askInventoryOnLaunchField.value) &&
-            inventoryMeta.error && (
-              <div
-                className="pf-c-form__helper-text pf-m-error"
-                aria-live="polite"
-              >
-                {inventoryMeta.error}
-              </div>
-            )}
-        </FieldWithPrompt>
+        </FormGroup>
         <ProjectLookup
           value={projectField.value}
           onBlur={() => projectHelpers.setTouched()}
@@ -268,8 +266,9 @@ function JobTemplateForm({
           isValid={!projectMeta.touched || !projectMeta.error}
           helperTextInvalid={projectMeta.error}
           onChange={handleProjectUpdate}
-          autocomplete={handleProjectAutocomplete}
           required
+          autoPopulate={!template?.id}
+          isOverrideDisabled={isOverrideDisabledLookup}
         />
         {projectField.value?.allow_override && (
           <FieldWithPrompt
@@ -278,7 +277,8 @@ function JobTemplateForm({
             promptId="template-ask-scm-branch-on-launch"
             promptName="ask_scm_branch_on_launch"
             tooltip={i18n._(
-              t`Select a branch for the job template. This branch is applied to all job template nodes that prompt for a branch.`
+              t`Select a branch for the job template. This branch is applied to
+              all job template nodes that prompt for a branch.`
             )}
           >
             <TextInput
@@ -298,14 +298,19 @@ function JobTemplateForm({
           }
           isRequired
           label={i18n._(t`Playbook`)}
+          labelIcon={
+            <Popover
+              content={i18n._(
+                t`Select the playbook to be executed by this job.`
+              )}
+            />
+          }
         >
-          <FieldTooltip
-            content={i18n._(t`Select the playbook to be executed by this job.`)}
-          />
           <PlaybookSelect
+            onChange={playbookHelpers.setValue}
             projectId={projectField.value?.id}
             isValid={!playbookMeta.touched || !playbookMeta.error}
-            field={playbookField}
+            selected={playbookField.value}
             onBlur={() => playbookHelpers.setTouched()}
             onError={setContentError}
           />
@@ -330,12 +335,17 @@ function JobTemplateForm({
               onError={setContentError}
             />
           </FieldWithPrompt>
-          <FormGroup label={i18n._(t`Labels`)} fieldId="template-labels">
-            <FieldTooltip
-              content={i18n._(t`Optional labels that describe this job template,
+          <FormGroup
+            label={i18n._(t`Labels`)}
+            labelIcon={
+              <Popover
+                content={i18n._(t`Optional labels that describe this job template,
                       such as 'dev' or 'test'. Labels can be used to group and filter
                       job templates and completed jobs.`)}
-            />
+              />
+            }
+            fieldId="template-labels"
+          >
             <LabelSelect
               value={labelsField.value}
               onChange={labels => labelsHelpers.setValue(labels)}
@@ -349,7 +359,10 @@ function JobTemplateForm({
             label={i18n._(t`Variables`)}
             promptId="template-ask-variables-on-launch"
             tooltip={i18n._(
-              t`Pass extra command line variables to the playbook. This is the -e or --extra-vars command line parameter for ansible-playbook. Provide key/value pairs using either YAML or JSON. Refer to the Ansible Tower documentation for example syntax.`
+              t`Pass extra command line variables to the playbook. This is the
+              -e or --extra-vars command line parameter for ansible-playbook.
+              Provide key/value pairs using either YAML or JSON. Refer to the
+              Ansible Tower documentation for example syntax.`
             )}
           />
           <FormColumnLayout>
@@ -424,7 +437,7 @@ function JobTemplateForm({
               min="0"
               label={i18n._(t`Timeout`)}
               tooltip={i18n._(t`The amount of time (in seconds) to run
-                  before the task is canceled. Defaults to 0 for no job
+                  before the job is canceled. Defaults to 0 for no job
                   timeout.`)}
             />
             <FieldWithPrompt
@@ -434,7 +447,7 @@ function JobTemplateForm({
               promptName="ask_diff_mode_on_launch"
               tooltip={i18n._(t`If enabled, show the changes made by
                 Ansible tasks, where supported. This is equivalent
-                to Ansible&#x2019s --diff mode.`)}
+                to Ansible's --diff mode.`)}
             >
               <Switch
                 id="template-show-changes"
@@ -500,7 +513,7 @@ function JobTemplateForm({
                       <span>
                         {i18n._(t`Provisioning Callbacks`)}
                         &nbsp;
-                        <FieldTooltip
+                        <Popover
                           content={i18n._(t`Enables creation of a provisioning
                               callback URL. Using the URL a host can contact BRAND_NAME
                               and request a configuration update using this job
@@ -520,7 +533,7 @@ function JobTemplateForm({
                       <span>
                         {i18n._(t`Enable Webhook`)}
                         &nbsp;
-                        <FieldTooltip
+                        <Popover
                           content={i18n._(t`Enable webhook for this template.`)}
                         />
                       </span>
@@ -543,7 +556,9 @@ function JobTemplateForm({
                     name="use_fact_cache"
                     label={i18n._(t`Enable Fact Storage`)}
                     tooltip={i18n._(
-                      t`If enabled, this will store gathered facts so they can be viewed at the host level. Facts are persisted and injected into the fact cache at runtime.`
+                      t`If enabled, this will store gathered facts so they can
+                      be viewed at the host level. Facts are persisted and
+                      injected into the fact cache at runtime.`
                     )}
                   />
                 </FormCheckboxLayout>
@@ -578,6 +593,7 @@ function JobTemplateForm({
                           validate={
                             allowCallbacks ? required(null, i18n) : null
                           }
+                          isRequired={allowCallbacks}
                         />
                       </FormColumnLayout>
                     </>
@@ -611,7 +627,9 @@ JobTemplateForm.propTypes = {
   handleCancel: PropTypes.func.isRequired,
   handleSubmit: PropTypes.func.isRequired,
   submitError: PropTypes.shape({}),
+  isOverrideDisabledLookup: PropTypes.bool,
 };
+
 JobTemplateForm.defaultProps = {
   template: {
     name: '',
@@ -629,6 +647,7 @@ JobTemplateForm.defaultProps = {
     isNew: true,
   },
   submitError: null,
+  isOverrideDisabledLookup: false,
 };
 
 const FormikApp = withFormik({

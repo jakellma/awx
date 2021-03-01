@@ -5,11 +5,12 @@ import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 
 import { Form, FormGroup } from '@patternfly/react-core';
-import FormField, { FormSubmitError, FieldTooltip } from '../FormField';
+import FormField, { FormSubmitError } from '../FormField';
 import FormActionGroup from '../FormActionGroup/FormActionGroup';
 import { VariablesField } from '../CodeMirrorInput';
 import { InventoryLookup } from '../Lookup';
 import { FormColumnLayout, FormFullWidthLayout } from '../FormLayout';
+import Popover from '../Popover';
 import { required } from '../../util/validators';
 
 const InventoryLookupField = withI18n()(({ i18n, host }) => {
@@ -25,6 +26,13 @@ const InventoryLookupField = withI18n()(({ i18n, host }) => {
   return (
     <FormGroup
       label={i18n._(t`Inventory`)}
+      labelIcon={
+        <Popover
+          content={i18n._(
+            t`Select the inventory that this host will belong to.`
+          )}
+        />
+      }
       isRequired
       fieldId="inventory-lookup"
       validated={
@@ -32,10 +40,8 @@ const InventoryLookupField = withI18n()(({ i18n, host }) => {
       }
       helperTextInvalid={inventoryMeta.error}
     >
-      <FieldTooltip
-        content={i18n._(t`Select the inventory that this host will belong to.`)}
-      />
       <InventoryLookup
+        fieldId="inventory-lookup"
         value={inventory}
         onBlur={() => inventoryHelpers.setTouched()}
         tooltip={i18n._(t`Select the inventory that this host will belong to.`)}

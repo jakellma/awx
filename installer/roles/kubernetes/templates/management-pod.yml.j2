@@ -4,6 +4,12 @@ kind: Pod
 metadata:
   name: ansible-tower-management
   namespace: {{ kubernetes_namespace }}
+{% if kubernetes_pod_annotations is defined %}
+    annotations:
+{% for key, value in kubernetes_pod_annotations.items() %}
+      {{ key }}: {{ value | quote }}
+{% endfor %}
+{% endif %}
 spec:
 {% if kubernetes_image_pull_secrets is defined %}
   imagePullSecrets:
@@ -25,7 +31,12 @@ spec:
           mountPath: "/etc/tower/settings.py"
           subPath: settings.py
           readOnly: true
-
+{% if postgres_root_ca_cert is defined %}
+        - name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+          mountPath: {{ ca_trust_bundle }}
+          subPath: {{ postgres_root_ca_filename }}
+          readOnly: true
+{% endif %}
         - name: "{{ kubernetes_deployment_name }}-application-credentials"
           mountPath: "/etc/tower/conf.d/"
           readOnly: true
@@ -70,7 +81,14 @@ spec:
         items:
           - key: {{ kubernetes_deployment_name }}_settings
             path: settings.py
-
+{% if postgres_root_ca_cert is defined %}
+    - name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+      configMap:
+        name: {{ kubernetes_deployment_name }}-postgres-root-ca-cert
+        items:
+        - key: postgres_root_ca.crt
+          path: postgres_root_ca.crt
+{% endif %}
     - name: {{ kubernetes_deployment_name }}-secret-key
       secret:
         secretName: "{{ kubernetes_deployment_name }}-secrets"

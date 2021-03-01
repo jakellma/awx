@@ -1,19 +1,16 @@
 /* eslint no-nested-ternary: 0 */
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { Formik, useField } from 'formik';
+import { Formik, useField, useFormikContext } from 'formik';
 import { Form, FormGroup, Title } from '@patternfly/react-core';
 import { Config } from '../../../contexts/Config';
 import AnsibleSelect from '../../../components/AnsibleSelect';
 import ContentError from '../../../components/ContentError';
 import ContentLoading from '../../../components/ContentLoading';
 import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
-import FormField, {
-  FieldTooltip,
-  FormSubmitError,
-} from '../../../components/FormField';
+import FormField, { FormSubmitError } from '../../../components/FormField';
 import OrganizationLookup from '../../../components/Lookup/OrganizationLookup';
 import { CredentialTypesAPI, ProjectsAPI } from '../../../api';
 import { required } from '../../../util/validators';
@@ -21,10 +18,11 @@ import {
   FormColumnLayout,
   SubFormLayout,
 } from '../../../components/FormLayout';
+import Popover from '../../../components/Popover';
 import {
   GitSubForm,
-  HgSubForm,
   SvnSubForm,
+  ArchiveSubForm,
   InsightsSubForm,
   ManualSubForm,
 } from './ProjectSubForms';
@@ -68,6 +66,7 @@ const fetchCredentials = async credential => {
 };
 
 function ProjectFormFields({
+  project,
   project_base_dir,
   project_local_paths,
   formik,
@@ -89,6 +88,8 @@ function ProjectFormFields({
     allow_override: false,
     scm_update_cache_timeout: 0,
   };
+
+  const { setFieldValue } = useFormikContext();
 
   const [scmTypeField, scmTypeMeta, scmTypeHelpers] = useField({
     name: 'scm_type',
@@ -132,15 +133,25 @@ function ProjectFormFields({
     });
   };
 
-  const handleCredentialSelection = (type, value) => {
-    setCredentials({
-      ...credentials,
-      [type]: {
-        ...credentials[type],
-        value,
-      },
-    });
-  };
+  const handleCredentialSelection = useCallback(
+    (type, value) => {
+      setCredentials({
+        ...credentials,
+        [type]: {
+          ...credentials[type],
+          value,
+        },
+      });
+    },
+    [credentials, setCredentials]
+  );
+
+  const onOrganizationChange = useCallback(
+    value => {
+      setFieldValue('organization', value);
+    },
+    [setFieldValue]
+  );
 
   return (
     <>
@@ -162,11 +173,10 @@ function ProjectFormFields({
         helperTextInvalid={organizationMeta.error}
         isValid={!organizationMeta.touched || !organizationMeta.error}
         onBlur={() => organizationHelpers.setTouched()}
-        onChange={value => {
-          organizationHelpers.setValue(value);
-        }}
+        onChange={onOrganizationChange}
         value={organizationField.value}
         required
+        autoPopulate={!project?.id}
       />
       <FormGroup
         fieldId="project-scm-type"
@@ -226,15 +236,15 @@ function ProjectFormFields({
                     scmUpdateOnLaunch={formik.values.scm_update_on_launch}
                   />
                 ),
-                hg: (
-                  <HgSubForm
+                svn: (
+                  <SvnSubForm
                     credential={credentials.scm}
                     onCredentialSelection={handleCredentialSelection}
                     scmUpdateOnLaunch={formik.values.scm_update_on_launch}
                   />
                 ),
-                svn: (
-                  <SvnSubForm
+                archive: (
+                  <ArchiveSubForm
                     credential={credentials.scm}
                     onCredentialSelection={handleCredentialSelection}
                     scmUpdateOnLaunch={formik.values.scm_update_on_launch}
@@ -245,6 +255,9 @@ function ProjectFormFields({
                     credential={credentials.insights}
                     onCredentialSelection={handleCredentialSelection}
                     scmUpdateOnLaunch={formik.values.scm_update_on_launch}
+                    autoPopulateCredential={
+                      !project?.id || project?.scm_type !== 'insights'
+                    }
                   />
                 ),
               }[formik.values.scm_type]
@@ -259,21 +272,23 @@ function ProjectFormFields({
             <FormGroup
               fieldId="project-custom-virtualenv"
               label={i18n._(t`Ansible Environment`)}
-            >
-              <FieldTooltip
-                content={i18n._(t`Select the playbook to be executed by
+              labelIcon={
+                <Popover
+                  content={i18n._(t`Select the playbook to be executed by
                 this job.`)}
-              />
+                />
+              }
+            >
               <AnsibleSelect
                 id="project-custom-virtualenv"
                 data={[
                   {
                     label: i18n._(t`Use Default Ansible Environment`),
-                    value: '/venv/ansible/',
+                    value: '/var/lib/awx/venv/ansible/',
                     key: 'default',
                   },
                   ...custom_virtualenvs
-                    .filter(datum => datum !== '/venv/ansible/')
+                    .filter(datum => datum !== '/var/lib/awx/venv/ansible/')
                     .map(datum => ({
                       label: datum,
                       value: datum,
@@ -295,7 +310,17 @@ function ProjectForm({ i18n, project, submitError, ...props }) {
   const { summary_fields = {} } = project;
   const [contentError, setContentError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [scmSubFormState, setScmSubFormState] = useState(null);
+  const [scmSubFormState, setScmSubFormState] = useState({
+    scm_url: '',
+    scm_branch: '',
+    scm_refspec: '',
+    credential: '',
+    scm_clean: false,
+    scm_delete_on_update: false,
+    scm_update_on_launch: false,
+    allow_override: false,
+    scm_update_cache_timeout: 0,
+  });
   const [scmTypeOptions, setScmTypeOptions] = useState(null);
   const [credentials, setCredentials] = useState({
     scm: { typeId: null, value: null },
@@ -369,6 +394,7 @@ function ProjectForm({ i18n, project, submitError, ...props }) {
             <Form autoComplete="off" onSubmit={formik.handleSubmit}>
               <FormColumnLayout>
                 <ProjectFormFields
+                  project={project}
                   project_base_dir={project_base_dir}
                   project_local_paths={project_local_paths}
                   formik={formik}

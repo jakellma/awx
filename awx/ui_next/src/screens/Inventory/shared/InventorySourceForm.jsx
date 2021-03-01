@@ -13,19 +13,15 @@ import AnsibleSelect from '../../../components/AnsibleSelect';
 import ContentError from '../../../components/ContentError';
 import ContentLoading from '../../../components/ContentLoading';
 import FormActionGroup from '../../../components/FormActionGroup/FormActionGroup';
-import FormField, {
-  FieldTooltip,
-  FormSubmitError,
-} from '../../../components/FormField';
+import FormField, { FormSubmitError } from '../../../components/FormField';
 import {
   FormColumnLayout,
   SubFormLayout,
 } from '../../../components/FormLayout';
+import Popover from '../../../components/Popover';
 
 import {
   AzureSubForm,
-  CloudFormsSubForm,
-  CustomScriptSubForm,
   EC2SubForm,
   GCESubForm,
   OpenStackSubForm,
@@ -43,11 +39,12 @@ const buildSourceChoiceOptions = options => {
   return sourceChoices.filter(({ key }) => key !== 'file');
 };
 
-const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
+const InventorySourceFormFields = ({ source, sourceOptions, i18n }) => {
   const {
     values,
     initialValues,
     resetForm,
+    setFieldTouched,
     setFieldValue,
   } = useFormikContext();
   const [sourceField, sourceMeta] = useField({
@@ -58,7 +55,7 @@ const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
   const [venvField] = useField('custom_virtualenv');
   const defaultVenv = {
     label: i18n._(t`Use Default Ansible Environment`),
-    value: '/venv/ansible/',
+    value: '/var/lib/awx/venv/ansible/',
     key: 'default',
   };
 
@@ -76,23 +73,24 @@ const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
     } else {
       const defaults = {
         credential: null,
-        group_by: '',
-        instance_filters: '',
         overwrite: false,
         overwrite_vars: false,
         source: sourceType,
         source_path: '',
         source_project: null,
-        source_regions: '',
         source_script: null,
         source_vars: '---\n',
         update_cache_timeout: 0,
         update_on_launch: false,
         update_on_project_update: false,
         verbosity: 1,
+        enabled_var: '',
+        enabled_value: '',
+        host_filter: '',
       };
       Object.keys(defaults).forEach(label => {
         setFieldValue(label, defaults[label]);
+        setFieldTouched(label, false);
       });
     }
   };
@@ -143,12 +141,14 @@ const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
         <FormGroup
           fieldId="custom-virtualenv"
           label={i18n._(t`Ansible Environment`)}
-        >
-          <FieldTooltip
-            content={i18n._(t`Select the custom
+          labelIcon={
+            <Popover
+              content={i18n._(t`Select the custom
             Python virtual environment for this
             inventory source sync to run on.`)}
-          />
+            />
+          }
+        >
           <AnsibleSelect
             id="custom-virtualenv"
             data={[
@@ -161,7 +161,7 @@ const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
           />
         </FormGroup>
       )}
-      {sourceField.value !== '' && (
+      {!['', 'custom'].includes(sourceField.value) && (
         <SubFormLayout>
           <Title size="md" headingLevel="h4">
             {i18n._(t`Source details`)}
@@ -169,17 +169,66 @@ const InventorySourceFormFields = ({ sourceOptions, i18n }) => {
           <FormColumnLayout>
             {
               {
-                azure_rm: <AzureSubForm sourceOptions={sourceOptions} />,
-                cloudforms: <CloudFormsSubForm />,
-                custom: <CustomScriptSubForm />,
+                azure_rm: (
+                  <AzureSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'azure_rm'
+                    }
+                    sourceOptions={sourceOptions}
+                  />
+                ),
                 ec2: <EC2SubForm sourceOptions={sourceOptions} />,
-                gce: <GCESubForm sourceOptions={sourceOptions} />,
-                openstack: <OpenStackSubForm />,
-                rhv: <VirtualizationSubForm />,
-                satellite6: <SatelliteSubForm />,
-                scm: <SCMSubForm />,
-                tower: <TowerSubForm />,
-                vmware: <VMwareSubForm sourceOptions={sourceOptions} />,
+                gce: (
+                  <GCESubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'gce'
+                    }
+                    sourceOptions={sourceOptions}
+                  />
+                ),
+                openstack: (
+                  <OpenStackSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'openstack'
+                    }
+                  />
+                ),
+                rhv: (
+                  <VirtualizationSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'rhv'
+                    }
+                  />
+                ),
+                satellite6: (
+                  <SatelliteSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'satellite6'
+                    }
+                  />
+                ),
+                scm: (
+                  <SCMSubForm
+                    autoPopulateProject={
+                      !source?.id || source?.source !== 'scm'
+                    }
+                  />
+                ),
+                tower: (
+                  <TowerSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'tower'
+                    }
+                  />
+                ),
+                vmware: (
+                  <VMwareSubForm
+                    autoPopulateCredential={
+                      !source?.id || source?.source !== 'vmware'
+                    }
+                    sourceOptions={sourceOptions}
+                  />
+                ),
               }[sourceField.value]
             }
           </FormColumnLayout>
@@ -200,21 +249,21 @@ const InventorySourceForm = ({
     credential: source?.summary_fields?.credential || null,
     custom_virtualenv: source?.custom_virtualenv || '',
     description: source?.description || '',
-    group_by: source?.group_by || '',
-    instance_filters: source?.instance_filters || '',
     name: source?.name || '',
     overwrite: source?.overwrite || false,
     overwrite_vars: source?.overwrite_vars || false,
     source: source?.source || '',
-    source_path: source?.source_path === '' ? '/ (project root)' : '',
+    source_path: source?.source_path || '',
     source_project: source?.summary_fields?.source_project || null,
-    source_regions: source?.source_regions || '',
     source_script: source?.summary_fields?.source_script || null,
     source_vars: source?.source_vars || '---\n',
     update_cache_timeout: source?.update_cache_timeout || 0,
     update_on_launch: source?.update_on_launch || false,
     update_on_project_update: source?.update_on_project_update || false,
     verbosity: source?.verbosity || 1,
+    enabled_var: source?.enabled_var || '',
+    enabled_value: source?.enabled_value || '',
+    host_filter: source?.host_filter || '',
   };
 
   const {
@@ -255,6 +304,7 @@ const InventorySourceForm = ({
             <InventorySourceFormFields
               formik={formik}
               i18n={i18n}
+              source={source}
               sourceOptions={sourceOptions}
             />
             {submitError && <FormSubmitError error={submitError} />}

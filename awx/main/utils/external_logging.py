@@ -18,6 +18,7 @@ def construct_rsyslog_conf_template(settings=settings):
     timeout = getattr(settings, 'LOG_AGGREGATOR_TCP_TIMEOUT', 5)
     max_disk_space = getattr(settings, 'LOG_AGGREGATOR_MAX_DISK_USAGE_GB', 1)
     spool_directory = getattr(settings, 'LOG_AGGREGATOR_MAX_DISK_USAGE_PATH', '/var/lib/awx').rstrip('/')
+    error_log_file = getattr(settings, 'LOG_AGGREGATOR_RSYSLOGD_ERROR_LOG_FILE', '')
 
     if not os.access(spool_directory, os.W_OK):
         spool_directory = '/var/lib/awx'
@@ -74,9 +75,10 @@ def construct_rsyslog_conf_template(settings=settings):
             f'skipverifyhost="{skip_verify}"',
             'action.resumeRetryCount="-1"',
             'template="awx"',
-            'errorfile="/var/log/tower/rsyslog.err"',
             f'action.resumeInterval="{timeout}"'
         ]
+        if error_log_file:
+            params.append(f'errorfile="{error_log_file}"')
         if parsed.path:
             path = urlparse.quote(parsed.path[1:], safe='/=')
             if parsed.query:
@@ -114,7 +116,7 @@ def construct_rsyslog_conf_template(settings=settings):
 def reconfigure_rsyslog():
     tmpl = construct_rsyslog_conf_template()
     # Write config to a temp file then move it to preserve atomicity
-    with tempfile.TemporaryDirectory(prefix='rsyslog-conf-') as temp_dir:
+    with tempfile.TemporaryDirectory(dir='/var/lib/awx/rsyslog/', prefix='rsyslog-conf-') as temp_dir:
         path = temp_dir + '/rsyslog.conf.temp'
         with open(path, 'w') as f:
             os.chmod(path, 0o640)

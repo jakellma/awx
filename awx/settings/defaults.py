@@ -1,6 +1,7 @@
 # Copyright (c) 2015 Ansible, Inc.
 # All Rights Reserved.
 
+import base64
 import os
 import re  # noqa
 import sys
@@ -8,8 +9,6 @@ from datetime import timedelta
 
 # global settings
 from django.conf import global_settings
-# ugettext lazy
-from django.utils.translation import ugettext_lazy as _
 
 # Update this module's local settings from the global settings module.
 this_module = sys.modules[__name__]
@@ -93,7 +92,6 @@ USE_L10N = True
 USE_TZ = True
 
 STATICFILES_DIRS = (
-    os.path.join(BASE_DIR, 'ui', 'static'),
     os.path.join(BASE_DIR, 'ui_next', 'build', 'static'),
     os.path.join(BASE_DIR, 'static'),
 )
@@ -119,7 +117,7 @@ LOGIN_URL = '/api/login/'
 
 # Absolute filesystem path to the directory to host projects (with playbooks).
 # This directory should not be web-accessible.
-PROJECTS_ROOT = os.path.join(BASE_DIR, 'projects')
+PROJECTS_ROOT = '/var/lib/awx/projects/'
 
 # Absolute filesystem path to the directory to host collections for
 # running inventory imports, isolated playbooks
@@ -128,10 +126,10 @@ AWX_ANSIBLE_COLLECTIONS_PATHS = os.path.join(BASE_DIR, 'vendor', 'awx_ansible_co
 # Absolute filesystem path to the directory for job status stdout (default for
 # development and tests, default for production defined in production.py). This
 # directory should not be web-accessible
-JOBOUTPUT_ROOT = os.path.join(BASE_DIR, 'job_output')
+JOBOUTPUT_ROOT = '/var/lib/awx/job_status/'
 
 # Absolute filesystem path to the directory to store logs
-LOG_ROOT = os.path.join(BASE_DIR)
+LOG_ROOT = '/var/log/tower/'
 
 # The heartbeat file for the tower scheduler
 SCHEDULE_METADATA_LOCATION = os.path.join(BASE_DIR, '.tower_cycle')
@@ -151,7 +149,10 @@ SCHEDULE_MAX_JOBS = 10
 SITE_ID = 1
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = 'p7z7g1ql4%6+(6nlebb6hdk7sd^&fnjpal308%n%+p^_e6vo1y'
+if os.path.exists('/etc/tower/SECRET_KEY'):
+    SECRET_KEY = open('/etc/tower/SECRET_KEY', 'rb').read().strip()
+else:
+    SECRET_KEY = base64.encodebytes(os.urandom(32)).decode().rstrip()
 
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
@@ -199,11 +200,22 @@ LOCAL_STDOUT_EXPIRE_TIME = 2592000
 # events into the database
 JOB_EVENT_WORKERS = 4
 
+# The number of seconds to buffer callback receiver bulk
+# writes in memory before flushing via JobEvent.objects.bulk_create()
+JOB_EVENT_BUFFER_SECONDS = .1
+
+# The interval at which callback receiver statistics should be
+# recorded
+JOB_EVENT_STATISTICS_INTERVAL = 5
+
 # The maximum size of the job event worker queue before requests are blocked
 JOB_EVENT_MAX_QUEUE_SIZE = 10000
 
 # The number of job events to migrate per-transaction when moving from int -> bigint
 JOB_EVENT_MIGRATION_CHUNK_SIZE = 1000000
+
+# The maximum allowed jobs to start on a given task manager cycle
+START_TASK_LIMIT = 100
 
 # Disallow sending session cookies over insecure connections
 SESSION_COOKIE_SECURE = True
@@ -240,8 +252,7 @@ TEMPLATES = [
                 'django.template.context_processors.static',
                 'django.template.context_processors.tz',
                 'django.contrib.messages.context_processors.messages',
-                'awx.ui.context_processors.settings',
-                'awx.ui.context_processors.version',
+                'awx.ui.context_processors.csp',
                 'social_django.context_processors.backends',
                 'social_django.context_processors.login_redirect',
             ],
@@ -255,6 +266,7 @@ TEMPLATES = [
         'DIRS': [
             os.path.join(BASE_DIR, 'templates'),
             os.path.join(BASE_DIR, 'ui_next', 'build'),
+            os.path.join(BASE_DIR, 'ui_next', 'public')
         ],
     },
 ]
@@ -277,11 +289,13 @@ INSTALLED_APPS = [
     'polymorphic',
     'taggit',
     'social_django',
+    'django_guid',
     'corsheaders',
     'awx.conf',
     'awx.main',
     'awx.api',
     'awx.ui',
+    'awx.ui_next',
     'awx.sso',
     'solo'
 ]
@@ -310,7 +324,7 @@ REST_FRAMEWORK = {
         'awx.api.parsers.JSONParser',
     ),
     'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
+        'awx.api.renderers.DefaultJSONRenderer',
         'awx.api.renderers.BrowsableAPIRenderer',
     ),
     'DEFAULT_METADATA_CLASS': 'awx.api.metadata.Metadata',
@@ -337,6 +351,9 @@ AUTHENTICATION_BACKENDS = (
     'social_core.backends.github.GithubOAuth2',
     'social_core.backends.github.GithubOrganizationOAuth2',
     'social_core.backends.github.GithubTeamOAuth2',
+    'social_core.backends.github_enterprise.GithubEnterpriseOAuth2',
+    'social_core.backends.github_enterprise.GithubEnterpriseOrganizationOAuth2',
+    'social_core.backends.github_enterprise.GithubEnterpriseTeamOAuth2',
     'social_core.backends.azuread.AzureADOAuth2',
     'awx.sso.backends.SAMLAuth',
     'django.contrib.auth.backends.ModelBackend',
@@ -479,6 +496,7 @@ SOCIAL_AUTH_SAML_PIPELINE = _SOCIAL_AUTH_PIPELINE_BASE + (
     'awx.sso.pipeline.update_user_orgs',
     'awx.sso.pipeline.update_user_teams',
 )
+SAML_AUTO_CREATE_OBJECTS = True
 
 SOCIAL_AUTH_LOGIN_URL = '/'
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = '/sso/complete/'
@@ -511,6 +529,20 @@ SOCIAL_AUTH_GITHUB_TEAM_KEY = ''
 SOCIAL_AUTH_GITHUB_TEAM_SECRET = ''
 SOCIAL_AUTH_GITHUB_TEAM_ID = ''
 SOCIAL_AUTH_GITHUB_TEAM_SCOPE = ['user:email', 'read:org']
+
+SOCIAL_AUTH_GITHUB_ENTERPRISE_KEY = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_SECRET = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_SCOPE = ['user:email', 'read:org']
+
+SOCIAL_AUTH_GITHUB_ENTERPRISE_ORG_KEY = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_ORG_SECRET = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_ORG_NAME = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_ORG_SCOPE = ['user:email', 'read:org']
+
+SOCIAL_AUTH_GITHUB_ENTERPRISE_TEAM_KEY = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_TEAM_SECRET = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_TEAM_ID = ''
+SOCIAL_AUTH_GITHUB_ENTERPRISE_TEAM_SCOPE = ['user:email', 'read:org']
 
 SOCIAL_AUTH_AZUREAD_OAUTH2_KEY = ''
 SOCIAL_AUTH_AZUREAD_OAUTH2_SECRET = ''
@@ -569,27 +601,8 @@ AWX_COLLECTIONS_ENABLED = True
 # Follow symlinks when scanning for playbooks
 AWX_SHOW_PLAYBOOK_LINKS = False
 
-# Settings for primary galaxy server, should be set in the UI
-PRIMARY_GALAXY_URL = ''
-PRIMARY_GALAXY_USERNAME = ''
-PRIMARY_GALAXY_TOKEN = ''
-PRIMARY_GALAXY_PASSWORD = ''
-PRIMARY_GALAXY_AUTH_URL = ''
-
-# Settings for the public galaxy server(s).
-PUBLIC_GALAXY_ENABLED = True
-PUBLIC_GALAXY_SERVER = {
-    'id': 'galaxy',
-    'url': 'https://galaxy.ansible.com'
-}
-
 # Applies to any galaxy server
 GALAXY_IGNORE_CERTS = False
-
-# List of dicts of fallback (additional) Galaxy servers.  If configured, these
-# will be higher precedence than public Galaxy, but lower than primary Galaxy.
-# Available options: 'id', 'url', 'username', 'password', 'token', 'auth_url'
-FALLBACK_GALAXY_SERVERS = []
 
 # Enable bubblewrap support for running jobs (playbook runs only).
 # Note: This setting may be overridden by database settings.
@@ -671,145 +684,32 @@ INV_ENV_VARIABLE_BLOCKED = ("HOME", "USER", "_", "TERM")
 # ----------------
 # -- Amazon EC2 --
 # ----------------
-
-# AWS does not appear to provide pretty region names via any API, so store the
-# list of names here.  The available region IDs will be pulled from boto.
-# http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region
-EC2_REGION_NAMES = {
-    'us-east-1': _('US East (Northern Virginia)'),
-    'us-east-2': _('US East (Ohio)'),
-    'us-west-2': _('US West (Oregon)'),
-    'us-west-1': _('US West (Northern California)'),
-    'ca-central-1': _('Canada (Central)'),
-    'eu-central-1': _('EU (Frankfurt)'),
-    'eu-west-1': _('EU (Ireland)'),
-    'eu-west-2': _('EU (London)'),
-    'ap-southeast-1': _('Asia Pacific (Singapore)'),
-    'ap-southeast-2': _('Asia Pacific (Sydney)'),
-    'ap-northeast-1': _('Asia Pacific (Tokyo)'),
-    'ap-northeast-2': _('Asia Pacific (Seoul)'),
-    'ap-south-1': _('Asia Pacific (Mumbai)'),
-    'sa-east-1': _('South America (Sao Paulo)'),
-    'us-gov-west-1': _('US West (GovCloud)'),
-    'cn-north-1': _('China (Beijing)'),
-}
-
-# Inventory variable name/values for determining if host is active/enabled.
 EC2_ENABLED_VAR = 'ec2_state'
 EC2_ENABLED_VALUE = 'running'
-
-# Inventory variable name containing unique instance ID.
-EC2_INSTANCE_ID_VAR = 'ec2_id'
-
-# Filter for allowed group/host names when importing inventory from EC2.
-EC2_GROUP_FILTER = r'^.+$'
-EC2_HOST_FILTER = r'^.+$'
+EC2_INSTANCE_ID_VAR = 'instance_id'
 EC2_EXCLUDE_EMPTY_GROUPS = True
-
 
 # ------------
 # -- VMware --
 # ------------
-# Inventory variable name/values for determining whether a host is
-# active in vSphere.
 VMWARE_ENABLED_VAR = 'guest.gueststate'
 VMWARE_ENABLED_VALUE = 'running'
-
-# Inventory variable name containing the unique instance ID.
 VMWARE_INSTANCE_ID_VAR = 'config.instanceUuid, config.instanceuuid'
-
-# Filter for allowed group and host names when importing inventory
-# from VMware.
-VMWARE_GROUP_FILTER = r'^.+$'
-VMWARE_HOST_FILTER = r'^.+$'
 VMWARE_EXCLUDE_EMPTY_GROUPS = True
 
 VMWARE_VALIDATE_CERTS = False
+
 # ---------------------------
 # -- Google Compute Engine --
 # ---------------------------
-
-# It's not possible to get zones in GCE without authenticating, so we
-# provide a list here.
-# Source: https://developers.google.com/compute/docs/zones
-GCE_REGION_CHOICES = [
-    ('us-east1-b', _('US East 1 (B)')),
-    ('us-east1-c', _('US East 1 (C)')),
-    ('us-east1-d', _('US East 1 (D)')),
-    ('us-east4-a', _('US East 4 (A)')),
-    ('us-east4-b', _('US East 4 (B)')),
-    ('us-east4-c', _('US East 4 (C)')),
-    ('us-central1-a', _('US Central (A)')),
-    ('us-central1-b', _('US Central (B)')),
-    ('us-central1-c', _('US Central (C)')),
-    ('us-central1-f', _('US Central (F)')),
-    ('us-west1-a', _('US West (A)')),
-    ('us-west1-b', _('US West (B)')),
-    ('us-west1-c', _('US West (C)')),
-    ('europe-west1-b', _('Europe West 1 (B)')),
-    ('europe-west1-c', _('Europe West 1 (C)')),
-    ('europe-west1-d', _('Europe West 1 (D)')),
-    ('europe-west2-a', _('Europe West 2 (A)')),
-    ('europe-west2-b', _('Europe West 2 (B)')),
-    ('europe-west2-c', _('Europe West 2 (C)')),
-    ('asia-east1-a', _('Asia East (A)')),
-    ('asia-east1-b', _('Asia East (B)')),
-    ('asia-east1-c', _('Asia East (C)')),
-    ('asia-southeast1-a', _('Asia Southeast (A)')),
-    ('asia-southeast1-b', _('Asia Southeast (B)')),
-    ('asia-northeast1-a', _('Asia Northeast (A)')),
-    ('asia-northeast1-b', _('Asia Northeast (B)')),
-    ('asia-northeast1-c', _('Asia Northeast (C)')),
-    ('australia-southeast1-a', _('Australia Southeast (A)')),
-    ('australia-southeast1-b', _('Australia Southeast (B)')),
-    ('australia-southeast1-c', _('Australia Southeast (C)')),
-]
-# Inventory variable name/value for determining whether a host is active
-# in Google Compute Engine.
 GCE_ENABLED_VAR = 'status'
 GCE_ENABLED_VALUE = 'running'
-
-# Filter for allowed group and host names when importing inventory from
-# Google Compute Engine.
-GCE_GROUP_FILTER = r'^.+$'
-GCE_HOST_FILTER = r'^.+$'
 GCE_EXCLUDE_EMPTY_GROUPS = True
 GCE_INSTANCE_ID_VAR = 'gce_id'
 
 # --------------------------------------
 # -- Microsoft Azure Resource Manager --
 # --------------------------------------
-# It's not possible to get zones in Azure without authenticating, so we
-# provide a list here.
-AZURE_RM_REGION_CHOICES = [
-    ('eastus', _('US East')),
-    ('eastus2', _('US East 2')),
-    ('centralus', _('US Central')),
-    ('northcentralus', _('US North Central')),
-    ('southcentralus', _('US South Central')),
-    ('westcentralus', _('US West Central')),
-    ('westus', _('US West')),
-    ('westus2', _('US West 2')),
-    ('canadaeast', _('Canada East')),
-    ('canadacentral', _('Canada Central')),
-    ('brazilsouth', _('Brazil South')),
-    ('northeurope', _('Europe North')),
-    ('westeurope', _('Europe West')),
-    ('ukwest', _('UK West')),
-    ('uksouth', _('UK South')),
-    ('eastasia', _('Asia East')),
-    ('southestasia', _('Asia Southeast')),
-    ('australiaeast', _('Australia East')),
-    ('australiasoutheast', _('Australia Southeast')),
-    ('westindia', _('India West')),
-    ('southindia', _('India South')),
-    ('japaneast', _('Japan East')),
-    ('japanwest', _('Japan West')),
-    ('koreacentral', _('Korea Central')),
-    ('koreasouth', _('Korea South')),
-]
-AZURE_RM_GROUP_FILTER = r'^.+$'
-AZURE_RM_HOST_FILTER = r'^.+$'
 AZURE_RM_ENABLED_VAR = 'powerstate'
 AZURE_RM_ENABLED_VALUE = 'running'
 AZURE_RM_INSTANCE_ID_VAR = 'id'
@@ -820,8 +720,6 @@ AZURE_RM_EXCLUDE_EMPTY_GROUPS = True
 # ---------------------
 OPENSTACK_ENABLED_VAR = 'status'
 OPENSTACK_ENABLED_VALUE = 'ACTIVE'
-OPENSTACK_GROUP_FILTER = r'^.+$'
-OPENSTACK_HOST_FILTER = r'^.+$'
 OPENSTACK_EXCLUDE_EMPTY_GROUPS = True
 OPENSTACK_INSTANCE_ID_VAR = 'openstack.id'
 
@@ -830,8 +728,6 @@ OPENSTACK_INSTANCE_ID_VAR = 'openstack.id'
 # ---------------------
 RHV_ENABLED_VAR = 'status'
 RHV_ENABLED_VALUE = 'up'
-RHV_GROUP_FILTER = r'^.+$'
-RHV_HOST_FILTER = r'^.+$'
 RHV_EXCLUDE_EMPTY_GROUPS = True
 RHV_INSTANCE_ID_VAR = 'id'
 
@@ -840,20 +736,16 @@ RHV_INSTANCE_ID_VAR = 'id'
 # ---------------------
 TOWER_ENABLED_VAR = 'remote_tower_enabled'
 TOWER_ENABLED_VALUE = 'true'
-TOWER_GROUP_FILTER = r'^.+$'
-TOWER_HOST_FILTER = r'^.+$'
 TOWER_EXCLUDE_EMPTY_GROUPS = True
 TOWER_INSTANCE_ID_VAR = 'remote_tower_id'
 
 # ---------------------
 # ----- Foreman -----
 # ---------------------
-SATELLITE6_ENABLED_VAR = 'foreman.enabled'
+SATELLITE6_ENABLED_VAR = 'foreman_enabled'
 SATELLITE6_ENABLED_VALUE = 'True'
-SATELLITE6_GROUP_FILTER = r'^.+$'
-SATELLITE6_HOST_FILTER = r'^.+$'
 SATELLITE6_EXCLUDE_EMPTY_GROUPS = True
-SATELLITE6_INSTANCE_ID_VAR = 'foreman.id'
+SATELLITE6_INSTANCE_ID_VAR = 'foreman_id'
 # SATELLITE6_GROUP_PREFIX and SATELLITE6_GROUP_PATTERNS defined in source vars
 
 # ---------------------
@@ -861,8 +753,6 @@ SATELLITE6_INSTANCE_ID_VAR = 'foreman.id'
 # ---------------------
 #CUSTOM_ENABLED_VAR =
 #CUSTOM_ENABLED_VALUE =
-CUSTOM_GROUP_FILTER = r'^.+$'
-CUSTOM_HOST_FILTER = r'^.+$'
 CUSTOM_EXCLUDE_EMPTY_GROUPS = False
 #CUSTOM_INSTANCE_ID_VAR =
 
@@ -871,8 +761,6 @@ CUSTOM_EXCLUDE_EMPTY_GROUPS = False
 # ---------------------
 #SCM_ENABLED_VAR =
 #SCM_ENABLED_VALUE =
-SCM_GROUP_FILTER = r'^.+$'
-SCM_HOST_FILTER = r'^.+$'
 SCM_EXCLUDE_EMPTY_GROUPS = False
 #SCM_INSTANCE_ID_VAR =
 
@@ -906,6 +794,7 @@ LOG_AGGREGATOR_LEVEL = 'INFO'
 LOG_AGGREGATOR_MAX_DISK_USAGE_GB = 1
 LOG_AGGREGATOR_MAX_DISK_USAGE_PATH = '/var/lib/awx'
 LOG_AGGREGATOR_RSYSLOGD_DEBUG = False
+LOG_AGGREGATOR_RSYSLOGD_ERROR_LOG_FILE = '/var/log/tower/rsyslog.err'
 
 # The number of retry attempts for websocket session establishment
 # If you're encountering issues establishing websockets in clustered Tower,
@@ -944,11 +833,14 @@ LOGGING = {
         },
         'dynamic_level_filter': {
             '()': 'awx.main.utils.filters.DynamicLevelFilter'
-        }
+        },
+        'guid': {
+            '()': 'awx.main.utils.filters.DefaultCorrelationId'
+        },
     },
     'formatters': {
         'simple': {
-            'format': '%(asctime)s %(levelname)-8s %(name)s %(message)s',
+            'format': '%(asctime)s %(levelname)-8s [%(guid)s] %(name)s %(message)s',
         },
         'json': {
             '()': 'awx.main.utils.formatters.LogstashFormatter'
@@ -958,14 +850,17 @@ LOGGING = {
             'format': '%(relativeSeconds)9.3f %(levelname)-8s %(message)s'
         },
         'dispatcher': {
-            'format': '%(asctime)s %(levelname)-8s %(name)s PID:%(process)d %(message)s',
+            'format': '%(asctime)s %(levelname)-8s [%(guid)s] %(name)s PID:%(process)d %(message)s',
+        },
+        'job_lifecycle': {
+            '()': 'awx.main.utils.formatters.JobLifeCycleFormatter',
         },
     },
     'handlers': {
         'console': {
             '()': 'logging.StreamHandler',
             'level': 'DEBUG',
-            'filters': ['require_debug_true_or_test'],
+            'filters': ['require_debug_true_or_test', 'guid'],
             'formatter': 'simple',
         },
         'null': {
@@ -985,42 +880,34 @@ LOGGING = {
             'class': 'awx.main.utils.handlers.RSysLogHandler',
             'formatter': 'json',
             'address': '/var/run/awx-rsyslog/rsyslog.sock',
-            'filters': ['external_log_enabled', 'dynamic_level_filter'],
+            'filters': ['external_log_enabled', 'dynamic_level_filter', 'guid'],
         },
         'tower_warnings': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filters': ['require_debug_false', 'dynamic_level_filter', 'guid'],
             'filename': os.path.join(LOG_ROOT, 'tower.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'callback_receiver': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filters': ['require_debug_false', 'dynamic_level_filter', 'guid'],
             'filename': os.path.join(LOG_ROOT, 'callback_receiver.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'dispatcher': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filters': ['require_debug_false', 'dynamic_level_filter', 'guid'],
             'filename': os.path.join(LOG_ROOT, 'dispatcher.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'dispatcher',
         },
         'wsbroadcast': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filters': ['require_debug_false', 'dynamic_level_filter', 'guid'],
             'filename': os.path.join(LOG_ROOT, 'wsbroadcast.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'celery.beat': {
@@ -1034,39 +921,43 @@ LOGGING = {
         },
         'task_system': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filters': ['require_debug_false', 'dynamic_level_filter', 'guid'],
             'filename': os.path.join(LOG_ROOT, 'task_system.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'management_playbooks': {
             'level': 'DEBUG',
-            'class':'logging.handlers.RotatingFileHandler',
+            'class':'logging.handlers.WatchedFileHandler',
             'filters': ['require_debug_false'],
             'filename': os.path.join(LOG_ROOT, 'management_playbooks.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'system_tracking_migrations': {
             'level': 'WARNING',
-            'class':'logging.handlers.RotatingFileHandler',
+            'class':'logging.handlers.WatchedFileHandler',
             'filters': ['require_debug_false'],
             'filename': os.path.join(LOG_ROOT, 'tower_system_tracking_migrations.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
         },
         'rbac_migrations': {
             'level': 'WARNING',
-            'class':'logging.handlers.RotatingFileHandler',
+            'class':'logging.handlers.WatchedFileHandler',
             'filters': ['require_debug_false'],
             'filename': os.path.join(LOG_ROOT, 'tower_rbac_migrations.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
-            'backupCount': 5,
             'formatter':'simple',
+        },
+        'isolated_manager': {
+            'level': 'WARNING',
+            'class':'logging.handlers.WatchedFileHandler',
+            'filename': os.path.join(LOG_ROOT, 'isolated_manager.log'),
+            'formatter':'simple',
+        },
+        'job_lifecycle': {
+            'level': 'DEBUG',
+            'class':'logging.handlers.WatchedFileHandler',
+            'filename': os.path.join(LOG_ROOT, 'job_lifecycle.log'),
+            'formatter': 'job_lifecycle',
         },
     },
     'loggers': {
@@ -1117,6 +1008,11 @@ LOGGING = {
         'awx.main.wsbroadcast': {
             'handlers': ['wsbroadcast'],
         },
+        'awx.isolated.manager': {
+            'level': 'WARNING',
+            'handlers': ['console', 'file', 'isolated_manager'],
+            'propagate': True
+        },
         'awx.isolated.manager.playbooks': {
             'handlers': ['management_playbooks'],
             'propagate': False
@@ -1127,6 +1023,11 @@ LOGGING = {
         },
         'awx.main.tasks': {
             'handlers': ['task_system', 'external_logger'],
+            'propagate': False
+        },
+        'awx.main.analytics': {
+            'handlers': ['task_system', 'external_logger'],
+            'level': 'INFO',
             'propagate': False
         },
         'awx.main.scheduler': {
@@ -1145,6 +1046,11 @@ LOGGING = {
         'awx.analytics': {
             'handlers': ['external_logger'],
             'level': 'INFO',
+            'propagate': False
+        },
+        'awx.analytics.job_lifecycle': {
+            'handlers': ['console', 'job_lifecycle'],
+            'level': 'DEBUG',
             'propagate': False
         },
         'django_auth_ldap': {
@@ -1196,6 +1102,7 @@ AWX_CALLBACK_PROFILE = False
 AWX_CLEANUP_PATHS = True
 
 MIDDLEWARE = [
+    'django_guid.middleware.GuidMiddleware',
     'awx.main.middleware.TimingMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'awx.main.middleware.MigrationRanCheckMiddleware',
@@ -1236,3 +1143,7 @@ BROADCAST_WEBSOCKET_NEW_INSTANCE_POLL_RATE_SECONDS = 10
 
 # How often websocket process will generate stats
 BROADCAST_WEBSOCKET_STATS_POLL_RATE_SECONDS = 5
+
+DJANGO_GUID = {
+    'GUID_HEADER_NAME': 'X-API-Request-Id',
+}

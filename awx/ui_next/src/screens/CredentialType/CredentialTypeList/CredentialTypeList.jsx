@@ -8,20 +8,23 @@ import { CredentialTypesAPI } from '../../../api';
 import { getQSConfig, parseQueryString } from '../../../util/qs';
 import useRequest, { useDeleteItems } from '../../../util/useRequest';
 import useSelected from '../../../util/useSelected';
-import PaginatedDataList, {
+import {
   ToolbarDeleteButton,
   ToolbarAddButton,
 } from '../../../components/PaginatedDataList';
+import PaginatedTable, {
+  HeaderRow,
+  HeaderCell,
+} from '../../../components/PaginatedTable';
 import ErrorDetail from '../../../components/ErrorDetail';
 import AlertModal from '../../../components/AlertModal';
 import DatalistToolbar from '../../../components/DataListToolbar';
 
 import CredentialTypeListItem from './CredentialTypeListItem';
 
-const QS_CONFIG = getQSConfig('credential_type', {
+const QS_CONFIG = getQSConfig('credential-type', {
   page: 1,
   page_size: 20,
-  order_by: 'name',
   managed_by_tower: false,
 });
 
@@ -33,7 +36,13 @@ function CredentialTypeList({ i18n }) {
     error: contentError,
     isLoading,
     request: fetchCredentialTypes,
-    result: { credentialTypes, credentialTypesCount, actions },
+    result: {
+      credentialTypes,
+      credentialTypesCount,
+      actions,
+      relatedSearchableKeys,
+      searchableKeys,
+    },
   } = useRequest(
     useCallback(async () => {
       const params = parseQueryString(QS_CONFIG, location.search);
@@ -47,12 +56,20 @@ function CredentialTypeList({ i18n }) {
         credentialTypes: response.data.results,
         credentialTypesCount: response.data.count,
         actions: responseActions.data.actions,
+        relatedSearchableKeys: (
+          responseActions?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          responseActions.data.actions?.GET || {}
+        ).filter(key => responseActions.data.actions?.GET[key].filterable),
       };
     }, [location]),
     {
       credentialTypes: [],
       credentialTypesCount: 0,
       actions: {},
+      relatedSearchableKeys: [],
+      searchableKeys: [],
     }
   );
 
@@ -67,11 +84,11 @@ function CredentialTypeList({ i18n }) {
   const {
     isLoading: deleteLoading,
     deletionError,
-    deleteItems: handleDeleteCredentialTypes,
+    deleteItems: deleteCredentialTypes,
     clearDeletionError,
   } = useDeleteItems(
-    useCallback(async () => {
-      await Promise.all(
+    useCallback(() => {
+      return Promise.all(
         selected.map(({ id }) => CredentialTypesAPI.destroy(id))
       );
     }, [selected]),
@@ -83,7 +100,7 @@ function CredentialTypeList({ i18n }) {
   );
 
   const handleDelete = async () => {
-    await handleDeleteCredentialTypes();
+    await deleteCredentialTypes();
     setSelected([]);
   };
 
@@ -93,7 +110,7 @@ function CredentialTypeList({ i18n }) {
     <>
       <PageSection>
         <Card>
-          <PaginatedDataList
+          <PaginatedTable
             contentError={contentError}
             hasContentLoading={isLoading || deleteLoading}
             items={credentialTypes}
@@ -101,11 +118,31 @@ function CredentialTypeList({ i18n }) {
             pluralizedItemName={i18n._(t`Credential Types`)}
             qsConfig={QS_CONFIG}
             onRowClick={handleSelect}
+            toolbarSearchColumns={[
+              {
+                name: i18n._(t`Name`),
+                key: 'name__icontains',
+                isDefault: true,
+              },
+              {
+                name: i18n._(t`Description`),
+                key: 'description__icontains',
+              },
+              {
+                name: i18n._(t`Created By (Username)`),
+                key: 'created_by__username__icontains',
+              },
+              {
+                name: i18n._(t`Modified By (Username)`),
+                key: 'modified_by__username__icontains',
+              },
+            ]}
+            toolbarSearchableKeys={searchableKeys}
+            toolbarRelatedSearchableKeys={relatedSearchableKeys}
             renderToolbar={props => (
               <DatalistToolbar
                 {...props}
                 showSelectAll
-                showExpandCollapse
                 isAllSelected={isAllSelected}
                 onSelectAll={isSelected =>
                   setSelected(isSelected ? [...credentialTypes] : [])
@@ -129,7 +166,13 @@ function CredentialTypeList({ i18n }) {
                 ]}
               />
             )}
-            renderItem={credentialType => (
+            headerRow={
+              <HeaderRow qsConfig={QS_CONFIG}>
+                <HeaderCell sortKey="name">{i18n._(t`Name`)}</HeaderCell>
+                <HeaderCell>{i18n._(t`Actions`)}</HeaderCell>
+              </HeaderRow>
+            }
+            renderRow={(credentialType, index) => (
               <CredentialTypeListItem
                 key={credentialType.id}
                 value={credentialType.name}
@@ -137,6 +180,7 @@ function CredentialTypeList({ i18n }) {
                 detailUrl={`${match.url}/${credentialType.id}/details`}
                 onSelect={() => handleSelect(credentialType)}
                 isSelected={selected.some(row => row.id === credentialType.id)}
+                rowIndex={index}
               />
             )}
             emptyStateControls={

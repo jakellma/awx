@@ -798,6 +798,10 @@ class Job(UnifiedJob, JobOptions, SurveyJobMixin, JobNotificationMixin, TaskMana
         if self.project:
             for name in ('awx', 'tower'):
                 r['{}_project_revision'.format(name)] = self.project.scm_revision
+                r['{}_project_scm_branch'.format(name)] = self.project.scm_branch
+        if self.scm_branch:
+            for name in ('awx', 'tower'):
+                r['{}_job_scm_branch'.format(name)] = self.scm_branch
         if self.job_template:
             for name in ('awx', 'tower'):
                 r['{}_job_template_id'.format(name)] = self.job_template.pk
@@ -824,6 +828,7 @@ class Job(UnifiedJob, JobOptions, SurveyJobMixin, JobNotificationMixin, TaskMana
         return self.inventory.hosts.only(*only)
 
     def start_job_fact_cache(self, destination, modification_times, timeout=None):
+        self.log_lifecycle("start_job_fact_cache")
         os.makedirs(destination, mode=0o700)
         hosts = self._get_inventory_hosts()
         if timeout is None:
@@ -848,6 +853,7 @@ class Job(UnifiedJob, JobOptions, SurveyJobMixin, JobNotificationMixin, TaskMana
             modification_times[filepath] = os.path.getmtime(filepath)
 
     def finish_job_fact_cache(self, destination, modification_times):
+        self.log_lifecycle("finish_job_fact_cache")
         for host in self._get_inventory_hosts():
             filepath = os.sep.join(map(str, [destination, host.name]))
             if not os.path.realpath(filepath).startswith(destination):

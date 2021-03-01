@@ -3,16 +3,14 @@ import { Link, useHistory } from 'react-router-dom';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
 
-import { Button, Chip, List, ListItem } from '@patternfly/react-core';
+import { Button, List, ListItem } from '@patternfly/react-core';
 import AlertModal from '../../../components/AlertModal';
 import { CardBody, CardActionsRow } from '../../../components/Card';
-import ChipGroup from '../../../components/ChipGroup';
 import { VariablesDetail } from '../../../components/CodeMirrorInput';
 import ContentError from '../../../components/ContentError';
 import ContentLoading from '../../../components/ContentLoading';
 import CredentialChip from '../../../components/CredentialChip';
 import DeleteButton from '../../../components/DeleteButton';
-import { FieldTooltip } from '../../../components/FormField';
 import InventorySourceSyncButton from '../shared/InventorySourceSyncButton';
 import {
   DetailList,
@@ -20,6 +18,7 @@ import {
   UserDateDetail,
 } from '../../../components/DetailList';
 import ErrorDetail from '../../../components/ErrorDetail';
+import Popover from '../../../components/Popover';
 import useRequest from '../../../util/useRequest';
 import { InventorySourcesAPI } from '../../../api';
 
@@ -28,21 +27,21 @@ function InventorySourceDetail({ inventorySource, i18n }) {
     created,
     custom_virtualenv,
     description,
-    group_by,
     id,
-    instance_filters,
     modified,
     name,
     overwrite,
     overwrite_vars,
     source,
     source_path,
-    source_regions,
     source_vars,
     update_cache_timeout,
     update_on_launch,
     update_on_project_update,
     verbosity,
+    enabled_var,
+    enabled_value,
+    host_filter,
     summary_fields: {
       created_by,
       credentials,
@@ -50,7 +49,6 @@ function InventorySourceDetail({ inventorySource, i18n }) {
       modified_by,
       organization,
       source_project,
-      source_script,
       user_capabilities,
     },
   } = inventorySource;
@@ -114,7 +112,7 @@ function InventorySourceDetail({ inventorySource, i18n }) {
         {overwrite && (
           <ListItem>
             {i18n._(t`Overwrite`)}
-            <FieldTooltip
+            <Popover
               content={
                 <>
                   {i18n._(t`If checked, any hosts and groups that were
@@ -137,7 +135,7 @@ function InventorySourceDetail({ inventorySource, i18n }) {
         {overwrite_vars && (
           <ListItem>
             {i18n._(t`Overwrite variables`)}
-            <FieldTooltip
+            <Popover
               content={
                 <>
                   {i18n._(t`If checked, all variables for child groups
@@ -156,7 +154,7 @@ function InventorySourceDetail({ inventorySource, i18n }) {
         {update_on_launch && (
           <ListItem>
             {i18n._(t`Update on launch`)}
-            <FieldTooltip
+            <Popover
               content={i18n._(t`Each time a job runs using this inventory,
         refresh the inventory from the selected source before
         executing job tasks.`)}
@@ -166,7 +164,7 @@ function InventorySourceDetail({ inventorySource, i18n }) {
         {update_on_project_update && (
           <ListItem>
             {i18n._(t`Update on project update`)}
-            <FieldTooltip
+            <Popover
               content={i18n._(t`After every project update where the SCM revision
         changes, refresh the inventory from the selected source
         before executing job tasks. This is intended for static content,
@@ -216,19 +214,22 @@ function InventorySourceDetail({ inventorySource, i18n }) {
             }
           />
         )}
-        <Detail
-          label={i18n._(t`Inventory file`)}
-          value={source_path === '' ? i18n._(t`/ (project root)`) : source_path}
-        />
-        <Detail
-          label={i18n._(t`Custom inventory script`)}
-          value={source_script?.name}
-        />
+        {source === 'scm' ? (
+          <Detail
+            label={i18n._(t`Inventory file`)}
+            value={
+              source_path === '' ? i18n._(t`/ (project root)`) : source_path
+            }
+          />
+        ) : null}
         <Detail label={i18n._(t`Verbosity`)} value={VERBOSITY[verbosity]} />
         <Detail
           label={i18n._(t`Cache timeout`)}
           value={`${update_cache_timeout} ${i18n._(t`seconds`)}`}
         />
+        <Detail label={i18n._(t`Host Filter`)} value={host_filter} />
+        <Detail label={i18n._(t`Enabled Variable`)} value={enabled_var} />
+        <Detail label={i18n._(t`Enabled Value`)} value={enabled_value} />
         {credentials?.length > 0 && (
           <Detail
             fullWidth
@@ -236,57 +237,6 @@ function InventorySourceDetail({ inventorySource, i18n }) {
             value={credentials.map(cred => (
               <CredentialChip key={cred?.id} credential={cred} isReadOnly />
             ))}
-          />
-        )}
-        {source_regions && (
-          <Detail
-            fullWidth
-            label={i18n._(t`Regions`)}
-            value={
-              <ChipGroup
-                numChips={5}
-                totalChips={source_regions.split(',').length}
-              >
-                {source_regions.split(',').map(region => (
-                  <Chip key={region} isReadOnly>
-                    {region}
-                  </Chip>
-                ))}
-              </ChipGroup>
-            }
-          />
-        )}
-        {instance_filters && (
-          <Detail
-            fullWidth
-            label={i18n._(t`Instance filters`)}
-            value={
-              <ChipGroup
-                numChips={5}
-                totalChips={instance_filters.split(',').length}
-              >
-                {instance_filters.split(',').map(filter => (
-                  <Chip key={filter} isReadOnly>
-                    {filter}
-                  </Chip>
-                ))}
-              </ChipGroup>
-            }
-          />
-        )}
-        {group_by && (
-          <Detail
-            fullWidth
-            label={i18n._(t`Only group by`)}
-            value={
-              <ChipGroup numChips={5} totalChips={group_by.split(',').length}>
-                {group_by.split(',').map(group => (
-                  <Chip key={group} isReadOnly>
-                    {group}
-                  </Chip>
-                ))}
-              </ChipGroup>
-            }
           />
         )}
         {optionsList && (

@@ -55,7 +55,7 @@ from awx.main.fields import JSONField, AskForField, OrderedManyToManyField
 __all__ = ['UnifiedJobTemplate', 'UnifiedJob', 'StdoutMaxBytesExceeded']
 
 logger = logging.getLogger('awx.main.models.unified_jobs')
-
+logger_job_lifecycle = logging.getLogger('awx.analytics.job_lifecycle')
 # NOTE: ACTIVE_STATES moved to constants because it is used by parent modules
 
 
@@ -420,7 +420,7 @@ class UnifiedJobTemplate(PolymorphicModel, CommonModelNameNotUnique, Notificatio
         # have been associated to the UJ
         if unified_job.__class__ in activity_stream_registrar.models:
             activity_stream_create(None, unified_job, True)
-
+        unified_job.log_lifecycle("created")
         return unified_job
 
     @classmethod
@@ -862,7 +862,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             self.unified_job_template = self._get_parent_instance()
             if 'unified_job_template' not in update_fields:
                 update_fields.append('unified_job_template')
-        
+
         if self.cancel_flag and not self.canceled_on:
             # Record the 'canceled' time.
             self.canceled_on = now()
@@ -873,7 +873,13 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
 
         # If status changed, update the parent instance.
         if self.status != status_before:
-            self._update_parent_instance()
+            # Update parent outside of the transaction for Job w/ allow_simultaneous=True
+            # This dodges lock contention at the expense of the foreign key not being
+            # completely correct.
+            if getattr(self, 'allow_simultaneous', False):
+                connection.on_commit(self._update_parent_instance)
+            else:
+                self._update_parent_instance()
 
         # Done.
         return result
@@ -1004,6 +1010,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             event_qs = self.get_event_queryset()
         except NotImplementedError:
             return True  # Model without events, such as WFJT
+        self.log_lifecycle("event_processing_finished")
         return self.emitted_events == event_qs.count()
 
     def result_stdout_raw_handle(self, enforce_max_bytes=True):
@@ -1312,6 +1319,10 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         if 'extra_vars' in kwargs:
             self.handle_extra_data(kwargs['extra_vars'])
 
+        # remove any job_explanations that may have been set while job was in pending
+        if self.job_explanation != "":
+            self.job_explanation = ""
+
         return (True, opts)
 
     def signal_start(self, **kwargs):
@@ -1366,7 +1377,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
                 running = self.celery_task_id in ControlDispatcher(
                     'dispatcher', self.controller_node or self.execution_node
                 ).running(timeout=timeout)
-            except socket.timeout:
+            except (socket.timeout, RuntimeError):
                 logger.error('could not reach dispatcher on {} within {}s'.format(
                     self.execution_node, timeout
                 ))
@@ -1442,6 +1453,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             for name in ('awx', 'tower'):
                 r['{}_workflow_job_id'.format(name)] = wj.pk
                 r['{}_workflow_job_name'.format(name)] = wj.name
+                r['{}_workflow_job_launch_type'.format(name)] = wj.launch_type
                 if schedule:
                     r['{}_parent_job_schedule_id'.format(name)] = schedule.pk
                     r['{}_parent_job_schedule_name'.format(name)] = schedule.name
@@ -1478,3 +1490,17 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
     @property
     def is_containerized(self):
         return False
+
+    def log_lifecycle(self, state, blocked_by=None):
+        extra={'type': self._meta.model_name,
+               'task_id': self.id,
+               'state': state}
+        if self.unified_job_template:
+            extra["template_name"] = self.unified_job_template.name
+        if state == "blocked" and blocked_by:
+            blocked_by_msg = f"{blocked_by._meta.model_name}-{blocked_by.id}"
+            msg = f"{self._meta.model_name}-{self.id} blocked by {blocked_by_msg}"
+            extra["blocked_by"] = blocked_by_msg
+        else:
+            msg = f"{self._meta.model_name}-{self.id} {state.replace('_', ' ')}"
+        logger_job_lifecycle.debug(msg, extra=extra)

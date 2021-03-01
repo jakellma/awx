@@ -22,18 +22,38 @@ function ApplicationLookup({ i18n, onChange, value, label }) {
   const location = useLocation();
   const {
     error,
-    result: { applications, itemCount },
+    result: { applications, itemCount, relatedSearchableKeys, searchableKeys },
     request: fetchApplications,
   } = useRequest(
     useCallback(async () => {
       const params = parseQueryString(QS_CONFIG, location.search);
 
-      const {
-        data: { results, count },
-      } = await ApplicationsAPI.read(params);
-      return { applications: results, itemCount: count };
+      const [
+        {
+          data: { results, count },
+        },
+        actionsResponse,
+      ] = await Promise.all([
+        ApplicationsAPI.read(params),
+        ApplicationsAPI.readOptions,
+      ]);
+      return {
+        applications: results,
+        itemCount: count,
+        relatedSearchableKeys: (
+          actionsResponse?.data?.related_search_fields || []
+        ).map(val => val.slice(0, -8)),
+        searchableKeys: Object.keys(
+          actionsResponse?.data?.actions?.GET || {}
+        ).filter(key => actionsResponse.data.actions?.GET[key].filterable),
+      };
     }, [location]),
-    { applications: [], itemCount: 0 }
+    {
+      applications: [],
+      itemCount: 0,
+      relatedSearchableKeys: [],
+      searchableKeys: [],
+    }
   );
   useEffect(() => {
     fetchApplications();
@@ -56,12 +76,12 @@ function ApplicationLookup({ i18n, onChange, value, label }) {
             searchColumns={[
               {
                 name: i18n._(t`Name`),
-                key: 'name',
+                key: 'name__icontains',
                 isDefault: true,
               },
               {
                 name: i18n._(t`Description`),
-                key: 'description',
+                key: 'description__icontains',
               },
             ]}
             sortColumns={[
@@ -82,6 +102,8 @@ function ApplicationLookup({ i18n, onChange, value, label }) {
                 key: 'description',
               },
             ]}
+            searchableKeys={searchableKeys}
+            relatedSearchableKeys={relatedSearchableKeys}
             readOnly={!canDelete}
             name="application"
             selectItem={item => dispatch({ type: 'SELECT_ITEM', item })}

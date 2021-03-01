@@ -1,10 +1,17 @@
 import 'styled-components/macro';
 import React, { useState, useEffect } from 'react';
-import { string, node, number } from 'prop-types';
+import { node, number, oneOfType, shape, string, arrayOf } from 'prop-types';
+import { Trans, withI18n } from '@lingui/react';
 import { Split, SplitItem, TextListItemVariants } from '@patternfly/react-core';
 import { DetailName, DetailValue } from '../DetailList';
 import MultiButtonToggle from '../MultiButtonToggle';
-import { yamlToJson, jsonToYaml, isJson } from '../../util/yaml';
+import Popover from '../Popover';
+import {
+  yamlToJson,
+  jsonToYaml,
+  isJsonObject,
+  isJsonString,
+} from '../../util/yaml';
 import CodeMirrorInput from './CodeMirrorInput';
 import { JSON_MODE, YAML_MODE } from './constants';
 
@@ -15,26 +22,40 @@ function getValueAsMode(value, mode) {
     }
     return '---';
   }
-  const modeMatches = isJson(value) === (mode === JSON_MODE);
+  const modeMatches = isJsonString(value) === (mode === JSON_MODE);
   if (modeMatches) {
     return value;
   }
   return mode === YAML_MODE ? jsonToYaml(value) : yamlToJson(value);
 }
 
-function VariablesDetail({ value, label, rows, fullHeight }) {
-  const [mode, setMode] = useState(isJson(value) ? JSON_MODE : YAML_MODE);
-  const [currentValue, setCurrentValue] = useState(value || '---');
+function VariablesDetail({ dataCy, helpText, value, label, rows, fullHeight }) {
+  const [mode, setMode] = useState(
+    isJsonObject(value) || isJsonString(value) ? JSON_MODE : YAML_MODE
+  );
+  const [currentValue, setCurrentValue] = useState(
+    isJsonObject(value) ? JSON.stringify(value, null, 2) : value || '---'
+  );
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setCurrentValue(getValueAsMode(value, mode));
+    setCurrentValue(
+      getValueAsMode(
+        isJsonObject(value) ? JSON.stringify(value, null, 2) : value,
+        mode
+      )
+    );
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [value]);
+
+  const labelCy = dataCy ? `${dataCy}-label` : null;
+  const valueCy = dataCy ? `${dataCy}-value` : null;
 
   return (
     <>
       <DetailName
+        data-cy={labelCy}
+        id={dataCy}
         component={TextListItemVariants.dt}
         fullWidth
         css="grid-column: 1 / -1"
@@ -48,6 +69,9 @@ function VariablesDetail({ value, label, rows, fullHeight }) {
               >
                 {label}
               </span>
+              {helpText && (
+                <Popover header={label} content={helpText} id={dataCy} />
+              )}
             </div>
           </SplitItem>
           <SplitItem>
@@ -70,6 +94,7 @@ function VariablesDetail({ value, label, rows, fullHeight }) {
         </Split>
       </DetailName>
       <DetailValue
+        data-cy={valueCy}
         component={TextListItemVariants.dd}
         fullWidth
         css="grid-column: 1 / -1; margin-top: -20px"
@@ -87,7 +112,7 @@ function VariablesDetail({ value, label, rows, fullHeight }) {
             css="color: var(--pf-global--danger-color--100);
             font-size: var(--pf-global--FontSize--sm"
           >
-            Error: {error.message}
+            <Trans>Error:</Trans> {error.message}
           </div>
         )}
       </DetailValue>
@@ -95,12 +120,16 @@ function VariablesDetail({ value, label, rows, fullHeight }) {
   );
 }
 VariablesDetail.propTypes = {
-  value: string.isRequired,
+  value: oneOfType([shape({}), arrayOf(string), string]).isRequired,
   label: node.isRequired,
   rows: number,
+  dataCy: string,
+  helpText: string,
 };
 VariablesDetail.defaultProps = {
   rows: null,
+  dataCy: '',
+  helpText: '',
 };
 
-export default VariablesDetail;
+export default withI18n()(VariablesDetail);

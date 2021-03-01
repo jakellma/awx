@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { arrayOf, func, object, string } from 'prop-types';
+import React, { useState, useEffect, useContext } from 'react';
+import { arrayOf, func, shape, string, oneOfType, number } from 'prop-types';
 import { withI18n } from '@lingui/react';
 import { t } from '@lingui/macro';
-import { Button, Tooltip } from '@patternfly/react-core';
+import { Button, Tooltip, DropdownItem } from '@patternfly/react-core';
 import styled from 'styled-components';
+import { KebabifiedContext } from '../../contexts/Kebabified';
+
 import AlertModal from '../AlertModal';
 
 const ModalNote = styled.div`
@@ -16,60 +18,88 @@ function DisassociateButton({
   modalNote = '',
   modalTitle = i18n._(t`Disassociate?`),
   onDisassociate,
+  verifyCannotDisassociate = true,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isKebabified, onKebabModalChange } = useContext(KebabifiedContext);
 
   function handleDisassociate() {
     onDisassociate();
     setIsOpen(false);
   }
 
+  useEffect(() => {
+    if (isKebabified) {
+      onKebabModalChange(isOpen);
+    }
+  }, [isKebabified, isOpen, onKebabModalChange]);
+
   function cannotDisassociate(item) {
-    return !item.summary_fields.user_capabilities.delete;
+    return !item.summary_fields?.user_capabilities?.delete;
   }
 
   function renderTooltip() {
-    const itemsUnableToDisassociate = itemsToDisassociate
-      .filter(cannotDisassociate)
-      .map(item => item.name)
-      .join(', ');
+    if (verifyCannotDisassociate) {
+      const itemsUnableToDisassociate = itemsToDisassociate
+        .filter(cannotDisassociate)
+        .map(item => item.name)
+        .join(', ');
 
-    if (itemsToDisassociate.some(cannotDisassociate)) {
-      return (
-        <div>
-          {i18n._(
-            t`You do not have permission to disassociate the following: ${itemsUnableToDisassociate}`
-          )}
-        </div>
-      );
+      if (itemsToDisassociate.some(cannotDisassociate)) {
+        return (
+          <div>
+            {i18n._(
+              t`You do not have permission to disassociate the following: ${itemsUnableToDisassociate}`
+            )}
+          </div>
+        );
+      }
     }
+
     if (itemsToDisassociate.length) {
       return i18n._(t`Disassociate`);
     }
     return i18n._(t`Select a row to disassociate`);
   }
 
-  const isDisabled =
-    itemsToDisassociate.length === 0 ||
-    itemsToDisassociate.some(cannotDisassociate);
+  let isDisabled = false;
+  if (verifyCannotDisassociate) {
+    isDisabled =
+      itemsToDisassociate.length === 0 ||
+      itemsToDisassociate.some(cannotDisassociate);
+  } else {
+    isDisabled = itemsToDisassociate.length === 0;
+  }
 
   // NOTE: Once PF supports tooltips on disabled elements,
   // we can delete the extra <div> around the <DeleteButton> below.
   // See: https://github.com/patternfly/patternfly-react/issues/1894
   return (
     <>
-      <Tooltip content={renderTooltip()} position="top">
-        <div>
-          <Button
-            variant="danger"
-            aria-label={i18n._(t`Disassociate`)}
-            onClick={() => setIsOpen(true)}
-            isDisabled={isDisabled}
-          >
-            {i18n._(t`Disassociate`)}
-          </Button>
-        </div>
-      </Tooltip>
+      {isKebabified ? (
+        <DropdownItem
+          key="add"
+          aria-label={i18n._(t`disassociate`)}
+          isDisabled={isDisabled}
+          component="button"
+          onClick={() => setIsOpen(true)}
+        >
+          {i18n._(t`Disassociate`)}
+        </DropdownItem>
+      ) : (
+        <Tooltip content={renderTooltip()} position="top">
+          <div>
+            <Button
+              variant="secondary"
+              aria-label={i18n._(t`Disassociate`)}
+              onClick={() => setIsOpen(true)}
+              isDisabled={isDisabled}
+            >
+              {i18n._(t`Disassociate`)}
+            </Button>
+          </div>
+        </Tooltip>
+      )}
 
       {isOpen && (
         <AlertModal
@@ -88,7 +118,7 @@ function DisassociateButton({
             </Button>,
             <Button
               key="cancel"
-              variant="secondary"
+              variant="link"
               aria-label={i18n._(t`Cancel`)}
               onClick={() => setIsOpen(false)}
             >
@@ -102,7 +132,7 @@ function DisassociateButton({
 
           {itemsToDisassociate.map(item => (
             <span key={item.id}>
-              <strong>{item.name}</strong>
+              <strong>{item.hostname ? item.hostname : item.name}</strong>
               <br />
             </span>
           ))}
@@ -119,7 +149,20 @@ DisassociateButton.defaultProps = {
 };
 
 DisassociateButton.propTypes = {
-  itemsToDisassociate: arrayOf(object),
+  itemsToDisassociate: oneOfType([
+    arrayOf(
+      shape({
+        id: number.isRequired,
+        name: string.isRequired,
+      })
+    ),
+    arrayOf(
+      shape({
+        id: number.isRequired,
+        hostname: string.isRequired,
+      })
+    ),
+  ]),
   modalNote: string,
   modalTitle: string,
   onDisassociate: func.isRequired,

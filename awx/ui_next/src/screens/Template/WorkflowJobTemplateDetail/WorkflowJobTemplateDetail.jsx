@@ -24,7 +24,7 @@ import {
   UserDateDetail,
 } from '../../../components/DetailList';
 import ErrorDetail from '../../../components/ErrorDetail';
-import LaunchButton from '../../../components/LaunchButton';
+import { LaunchButton } from '../../../components/LaunchButton';
 import Sparkline from '../../../components/Sparkline';
 import { toTitleCase } from '../../../util/strings';
 import useRequest, { useDismissableError } from '../../../util/useRequest';
@@ -99,7 +99,7 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
   const canLaunch = summary_fields?.user_capabilities?.start;
   const recentPlaybookJobs = summary_fields.recent_jobs.map(job => ({
     ...job,
-    type: 'job',
+    type: 'workflow_job',
   }));
 
   return (
@@ -135,9 +135,6 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
             )}
           />
         )}
-        {renderOptionsField && (
-          <Detail label={i18n._(t`Options`)} value={renderOptions} />
-        )}
         <Detail
           label={i18n._(t`Webhook Service`)}
           value={toTitleCase(template.webhook_service)}
@@ -162,6 +159,19 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
             }
           />
         )}
+        {renderOptionsField && (
+          <Detail label={i18n._(t`Options`)} value={renderOptions} />
+        )}
+        <UserDateDetail
+          label={i18n._(t`Created`)}
+          date={created}
+          user={summary_fields.created_by}
+        />
+        <UserDateDetail
+          label={i18n._(t`Modified`)}
+          date={modified}
+          user={summary_fields.modified_by}
+        />
         {summary_fields.labels?.results?.length > 0 && (
           <Detail
             fullWidth
@@ -184,16 +194,6 @@ function WorkflowJobTemplateDetail({ template, i18n }) {
           label={i18n._(t`Variables`)}
           value={extra_vars}
           rows={4}
-        />
-        <UserDateDetail
-          label={i18n._(t`Created`)}
-          date={created}
-          user={summary_fields.created_by}
-        />
-        <UserDateDetail
-          label={i18n._(t`Modified`)}
-          date={modified}
-          user={summary_fields.modified_by}
         />
       </DetailList>
       <CardActionsRow>

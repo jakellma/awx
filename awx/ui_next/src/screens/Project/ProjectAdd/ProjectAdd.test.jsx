@@ -24,7 +24,7 @@ describe('<ProjectAdd />', () => {
     scm_update_on_launch: true,
     scm_update_cache_timeout: 3,
     allow_override: false,
-    custom_virtualenv: '/venv/custom-env',
+    custom_virtualenv: '/var/lib/awx/venv/custom-env',
   };
 
   const projectOptionsResolve = {
@@ -35,8 +35,8 @@ describe('<ProjectAdd />', () => {
             choices: [
               ['', 'Manual'],
               ['git', 'Git'],
-              ['hg', 'Mercurial'],
               ['svn', 'Subversion'],
+              ['archive', 'Remote Archive'],
               ['insights', 'Red Hat Insights'],
             ],
           },
@@ -109,8 +109,16 @@ describe('<ProjectAdd />', () => {
       project_local_paths: ['foobar', 'qux'],
       project_base_dir: 'dir/foo/bar',
     };
-    const error = new Error('oops');
-    ProjectsAPI.create.mockImplementation(() => Promise.reject(error));
+    const error = {
+      response: {
+        config: {
+          method: 'create',
+          url: '/api/v2/projects/',
+        },
+        data: { detail: 'An error occurred' },
+      },
+    };
+    ProjectsAPI.create.mockRejectedValue(error);
     await act(async () => {
       wrapper = mountWithContexts(<ProjectAdd />, {
         context: { config },
